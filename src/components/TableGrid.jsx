@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { useCaptain } from '../context/CaptainContext';
 import {
   Plus,
-  ShoppingBag,
-  Truck,
   Grid3X3,
   LayoutGrid,
   X,
@@ -16,7 +14,8 @@ export default function TableGrid({ onSelectTable }) {
   const [columnsMode, setColumnsMode] = useState(3); // 3 (Compact) or 2 (Comfortable)
   const [paxSheetTable, setPaxSheetTable] = useState(null);
 
-  const sections = ['ALL', 'AC', 'FAMILY AC', 'PARCEL', 'HOME DELIVERY'];
+  // Dine-in sections only (Parcel & Home Delivery removed from Captain App)
+  const sections = ['ALL', 'AC', 'FAMILY AC'];
 
   const filteredTables = selectedSection === 'ALL'
     ? tables
@@ -200,8 +199,6 @@ export default function TableGrid({ onSelectTable }) {
                   flexShrink: 0
                 }}
               >
-                {sec === 'PARCEL' && <ShoppingBag size={11} />}
-                {sec === 'HOME DELIVERY' && <Truck size={11} />}
                 <span>{sec}</span>
                 <span style={{
                   fontSize: '9px',

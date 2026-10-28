@@ -55,9 +55,14 @@ export function CaptainProvider({ children }) {
     try {
       setIsLoading(true);
 
-      // 1. Tables
+      // 1. Tables (Dine-in only: AC & FAMILY AC; Parcel and Home Delivery excluded from Captain App)
       const { data: tData } = await supabase.from('tables').select('*').order('id');
-      if (tData) setTables(tData);
+      if (tData) {
+        setTables(tData.filter(t => {
+          const sec = (t.section || '').toUpperCase();
+          return sec !== 'PARCEL' && sec !== 'HOME DELIVERY';
+        }));
+      }
 
       // 2. Menu Items sorted by category_order, then code
       const { data: mData } = await supabase.from('menu_items').select('*').eq('is_available', true).order('category_order').order('code');
@@ -102,14 +107,22 @@ export function CaptainProvider({ children }) {
   useEffect(() => {
     loadData();
 
-    // Table channel
+    // Table channel (Dine-in tables only)
     const tablesChannel = supabase
       .channel('captain_tables_live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
         if (payload.eventType === 'INSERT') {
-          setTables(prev => [...prev.filter(t => t.id !== payload.new.id), payload.new]);
+          const sec = (payload.new.section || '').toUpperCase();
+          if (sec !== 'PARCEL' && sec !== 'HOME DELIVERY') {
+            setTables(prev => [...prev.filter(t => t.id !== payload.new.id), payload.new]);
+          }
         } else if (payload.eventType === 'UPDATE') {
-          setTables(prev => prev.map(t => (t.id === payload.new.id ? payload.new : t)));
+          const sec = (payload.new.section || '').toUpperCase();
+          if (sec !== 'PARCEL' && sec !== 'HOME DELIVERY') {
+            setTables(prev => prev.map(t => (t.id === payload.new.id ? payload.new : t)));
+          } else {
+            setTables(prev => prev.filter(t => t.id !== payload.new.id));
+          }
         } else if (payload.eventType === 'DELETE') {
           setTables(prev => prev.filter(t => t.id !== payload.old.id));
         }
