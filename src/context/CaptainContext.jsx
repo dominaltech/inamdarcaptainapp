@@ -76,7 +76,21 @@ export function CaptainProvider({ children }) {
       if (kData) setKots(kData);
 
       const { data: oData } = await supabase.from('order_items').select('*').in('status', ['PENDING', 'PREPARING', 'READY']).order('created_at', { ascending: false });
-      if (oData) setOrderItems(oData);
+      if (oData) {
+        setOrderItems(oData);
+        // Pre-populate readyAlerts for dishes already marked READY by kitchen
+        const initialReady = oData
+          .filter(i => i.status === 'READY' && !i.is_cancelled)
+          .map(i => ({
+            id: `ready-${i.id}`,
+            itemId: i.id,
+            dish: i.item_name,
+            tableId: i.table_id,
+            qty: i.qty,
+            time: new Date(i.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }));
+        setReadyAlerts(initialReady);
+      }
     } catch (err) {
       console.error('Error loading Supabase data:', err);
     } finally {
@@ -115,17 +129,22 @@ export function CaptainProvider({ children }) {
         // Food Ready Alert for Waiter Pickup
         if (updated.status === 'READY') {
           soundEngine.playFoodReadyChime();
-          setReadyAlerts(prev => [
-            {
-              id: `${updated.id}-${Date.now()}`,
-              itemId: updated.id,
-              dish: updated.item_name,
-              tableId: updated.table_id,
-              qty: updated.qty,
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            },
-            ...prev,
-          ]);
+          setReadyAlerts(prev => {
+            if (prev.some(a => a.itemId === updated.id)) return prev;
+            return [
+              {
+                id: `ready-${updated.id}-${Date.now()}`,
+                itemId: updated.id,
+                dish: updated.item_name,
+                tableId: updated.table_id,
+                qty: updated.qty,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              },
+              ...prev,
+            ];
+          });
+        } else if (updated.status === 'SERVED') {
+          setReadyAlerts(prev => prev.filter(a => a.itemId !== updated.id));
         }
       })
       .subscribe();
@@ -233,6 +252,51 @@ export function CaptainProvider({ children }) {
     setReadyAlerts(prev => prev.filter(a => a.id !== id));
   }, []);
 
+  // Mark single food alert as Picked Up / Served
+  const markPickedUp = useCallback(async (alert) => {
+    soundEngine.playTap();
+    // Optimistically remove from alert list
+    setReadyAlerts(prev => prev.filter(a => a.id !== alert.id && (alert.itemId ? a.itemId !== alert.itemId : true)));
+
+    if (alert.itemId) {
+      try {
+        await supabase
+          .from('order_items')
+          .update({ status: 'SERVED' })
+          .eq('id', alert.itemId);
+
+        setOrderItems(prev =>
+          prev.map(i => (i.id === alert.itemId ? { ...i, status: 'SERVED' } : i))
+        );
+      } catch (err) {
+        console.error('Error marking item served:', err);
+      }
+    }
+  }, []);
+
+  // Mark all ready food alerts as Picked Up / Served
+  const markAllPickedUp = useCallback(async () => {
+    soundEngine.playTap();
+    const currentAlerts = [...readyAlerts];
+    setReadyAlerts([]);
+
+    const itemIds = currentAlerts.map(a => a.itemId).filter(Boolean);
+    if (itemIds.length > 0) {
+      try {
+        await supabase
+          .from('order_items')
+          .update({ status: 'SERVED' })
+          .in('id', itemIds);
+
+        setOrderItems(prev =>
+          prev.map(i => (itemIds.includes(i.id) ? { ...i, status: 'SERVED' } : i))
+        );
+      } catch (err) {
+        console.error('Error marking all items served:', err);
+      }
+    }
+  }, [readyAlerts]);
+
   const value = {
     tables,
     menuItems,
@@ -249,6 +313,8 @@ export function CaptainProvider({ children }) {
     setTableStatus,
     readyAlerts,
     dismissReadyAlert,
+    markPickedUp,
+    markAllPickedUp,
     theme,
     toggleTheme,
     loadData

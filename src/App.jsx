@@ -8,11 +8,12 @@ import WaiterAuthModal from './components/WaiterAuthModal';
 import {
   LayoutGrid,
   Bell,
-  UserCheck
+  UserCheck,
+  Check
 } from 'lucide-react';
 
 function CaptainAppMain() {
-  const { currentWaiter, readyAlerts } = useCaptain();
+  const { currentWaiter, readyAlerts, markPickedUp, markAllPickedUp } = useCaptain();
   const [selectedTable, setSelectedTable] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [activeBottomNav, setActiveBottomNav] = useState('tables'); // 'tables' | 'alerts'
@@ -39,14 +40,51 @@ function CaptainAppMain() {
         ) : activeBottomNav === 'alerts' ? (
           /* Ready Alerts View */
           <div style={{ padding: '14px', overflowY: 'auto', height: '100%', width: '100%', boxSizing: 'border-box' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '900', marginBottom: '10px' }}>
-              Kitchen Food Ready Alerts
-            </h3>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '14px'
+            }}>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>
+                  Kitchen Pickups
+                </h3>
+                <p style={{ fontSize: '11px', color: 'var(--text-dim)', margin: '2px 0 0 0' }}>
+                  Dishes marked ready by kitchen for waiter pickup
+                </p>
+              </div>
+
+              {readyAlerts.length > 1 && (
+                <button
+                  onClick={() => markAllPickedUp()}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    padding: '5px 10px',
+                    borderRadius: '8px',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    color: '#10b981',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Check size={12} strokeWidth={3} />
+                  <span>Pick All ({readyAlerts.length})</span>
+                </button>
+              )}
+            </div>
+
             {readyAlerts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '50px 16px', color: 'var(--text-muted)' }}>
                 <Bell size={36} style={{ opacity: 0.25, marginBottom: '8px' }} />
-                <p style={{ fontSize: '13px' }}>No food ready for pickup right now.</p>
-                <p style={{ fontSize: '11px', marginTop: '4px' }}>When cooks mark dishes ready on KDS, alerts will appear here.</p>
+                <p style={{ fontSize: '13px', fontWeight: '700' }}>No pending pickups right now.</p>
+                <p style={{ fontSize: '11px', marginTop: '4px', color: 'var(--text-dim)' }}>
+                  When cooks mark dishes ready on KDS, alerts will appear here.
+                </p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -61,20 +99,53 @@ function CaptainAppMain() {
                       background: 'rgba(16, 185, 129, 0.08)',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between'
+                      justifyContent: 'space-between',
+                      gap: '10px'
                     }}
                   >
-                    <div>
-                      <div style={{ fontSize: '10px', fontWeight: '800', color: '#34d399', textTransform: 'uppercase' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '10px', fontWeight: '800', color: '#10b981', textTransform: 'uppercase' }}>
                         TABLE {alert.tableId} • {alert.time}
                       </div>
-                      <div style={{ fontSize: '15px', fontWeight: '900', color: '#fff', marginTop: '2px' }}>
+                      <div style={{
+                        fontSize: '14.5px',
+                        fontWeight: '900',
+                        color: 'var(--text-main)',
+                        marginTop: '2px',
+                        wordBreak: 'break-word'
+                      }}>
                         {alert.qty}x {alert.dish}
                       </div>
                     </div>
-                    <span style={{ fontSize: '10px', fontWeight: '800', padding: '3px 7px', borderRadius: '5px', background: '#10b981', color: '#fff' }}>
-                      PICKUP
-                    </span>
+
+                    {/* Interactive Pickup Action Button */}
+                    <button
+                      onClick={() => markPickedUp(alert)}
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: '800',
+                        padding: '7px 13px',
+                        borderRadius: '8px',
+                        background: '#10b981',
+                        color: '#ffffff',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        flexShrink: 0,
+                        boxShadow: '0 2px 6px rgba(16, 185, 129, 0.4)',
+                        transition: 'transform 0.1s ease, background-color 0.15s ease'
+                      }}
+                      onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'}
+                      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+                      onTouchStart={e => e.currentTarget.style.transform = 'scale(0.96)'}
+                      onTouchEnd={e => e.currentTarget.style.transform = 'scale(1)'}
+                      title="Tap to mark picked up and served"
+                    >
+                      <Check size={14} strokeWidth={3} />
+                      <span>PICKUP</span>
+                    </button>
                   </div>
                 ))}
               </div>
