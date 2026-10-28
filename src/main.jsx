@@ -8,3 +8,13 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 );
+
+// Register PWA Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then(
+      (reg) => console.log('Captain PWA ServiceWorker ready: ', reg.scope),
+      (err) => console.log('Captain PWA ServiceWorker failed: ', err)
+    );
+  });
+}

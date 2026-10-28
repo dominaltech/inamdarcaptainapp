@@ -21,12 +21,11 @@ export default function TableGrid({ onSelectTable }) {
     ? tables
     : tables.filter(t => (t.section || '').toUpperCase() === selectedSection);
 
-  const availableCount = tables.filter(t => t.status === 'AVAILABLE').length;
+  const availableCount = tables.filter(t => t.status === 'AVAILABLE' || t.status === 'BILLED' || t.status === 'UNSETTLED').length;
   const occupiedCount = tables.filter(t => t.status === 'OCCUPIED').length;
-  const billedCount = tables.filter(t => t.status === 'BILLED').length;
 
   const handleTableTap = (table) => {
-    if (table.status === 'AVAILABLE') {
+    if (table.status !== 'OCCUPIED') {
       setPaxSheetTable(table);
     } else {
       onSelectTable(table);
@@ -95,18 +94,6 @@ export default function TableGrid({ onSelectTable }) {
               whiteSpace: 'nowrap'
             }}>
               ● {occupiedCount} Busy
-            </span>
-            <span style={{
-              padding: '2px 6px',
-              borderRadius: '5px',
-              background: 'rgba(245, 158, 11, 0.15)',
-              color: '#f59e0b',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
-              fontWeight: '800',
-              fontSize: '10px',
-              whiteSpace: 'nowrap'
-            }}>
-              ● {billedCount} Billed
             </span>
           </div>
 
@@ -229,11 +216,12 @@ export default function TableGrid({ onSelectTable }) {
         boxSizing: 'border-box'
       }}>
         {filteredTables.map(table => {
-          const isAvailable = table.status === 'AVAILABLE';
           const isOccupied = table.status === 'OCCUPIED';
-          const isBilled = table.status === 'BILLED';
+          const isAvailable = !isOccupied;
 
-          const activeTableItems = orderItems.filter(i => i.table_id === table.id && !i.is_cancelled);
+          const activeTableItems = isOccupied
+            ? orderItems.filter(i => i.table_id === table.id && !i.is_cancelled)
+            : [];
           const runningAmount = activeTableItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
           let borderColor = 'var(--border-subtle)';
@@ -244,10 +232,6 @@ export default function TableGrid({ onSelectTable }) {
             borderColor = 'rgba(239, 68, 68, 0.45)';
             dotColor = '#ef4444';
             statusText = 'Busy';
-          } else if (isBilled) {
-            borderColor = 'rgba(245, 158, 11, 0.45)';
-            dotColor = '#f59e0b';
-            statusText = 'Billed';
           }
 
           return (
@@ -266,8 +250,6 @@ export default function TableGrid({ onSelectTable }) {
                 boxSizing: 'border-box',
                 background: isOccupied
                   ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.14), var(--bg-card))'
-                  : isBilled
-                  ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.14), var(--bg-card))'
                   : 'var(--bg-card)'
               }}
             >

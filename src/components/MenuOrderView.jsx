@@ -9,7 +9,6 @@ import {
   MessageSquare,
   Flame,
   Clock,
-  Receipt,
   X,
   ChevronRight,
   ShoppingBag,
@@ -164,7 +163,7 @@ export default function MenuOrderView({ table, onBack }) {
       <div style={{
         padding: '6px 10px',
         borderBottom: '1px solid var(--border-subtle)',
-        background: 'rgba(15, 22, 38, 0.98)',
+        background: 'var(--bg-header)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -184,7 +183,7 @@ export default function MenuOrderView({ table, onBack }) {
           </button>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={{ fontSize: '15px', fontWeight: '900', color: '#fff', whiteSpace: 'nowrap' }}>T-{table.id}</span>
+              <span style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>T-{table.id}</span>
               <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '4px', background: isAcSection ? 'rgba(59, 130, 246, 0.2)' : 'rgba(168, 85, 247, 0.2)', color: isAcSection ? '#60a5fa' : '#c084fc', fontWeight: '800', whiteSpace: 'nowrap' }}>
                 {isAcSection ? 'AC' : 'Hall'}
               </span>
@@ -196,7 +195,7 @@ export default function MenuOrderView({ table, onBack }) {
         </div>
 
         {/* Right: Tab Pills */}
-        <div style={{ display: 'flex', background: 'rgba(0, 0, 0, 0.5)', padding: '2px', borderRadius: '7px', border: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', background: 'var(--btn-ghost-bg)', padding: '2px', borderRadius: '7px', border: '1px solid var(--border-subtle)', flexShrink: 0 }}>
           <button
             onClick={() => setActiveTab('menu')}
             style={{
@@ -430,15 +429,7 @@ export default function MenuOrderView({ table, onBack }) {
         /* Active Fired KOTs on this table */
         <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '14px 12px 80px 12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '800' }}>Active Orders (Table {table.id})</h3>
-            <button
-              onClick={() => setTableStatus(table.id, 'BILLED')}
-              className="btn btn-warning"
-              style={{ minHeight: '34px', height: '34px', fontSize: '11px', padding: '0 10px' }}
-            >
-              <Receipt size={14} />
-              <span>Request Bill</span>
-            </button>
+            <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>Active Orders (Table {table.id})</h3>
           </div>
 
           {activeTableItems.length === 0 ? (
@@ -458,11 +449,12 @@ export default function MenuOrderView({ table, onBack }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    borderLeft: item.status === 'READY' ? '4px solid #10b981' : item.status === 'PREPARING' ? '4px solid #3b82f6' : '4px solid #f59e0b'
+                    borderLeft: item.status === 'READY' ? '4px solid #10b981' : item.status === 'PREPARING' ? '4px solid #3b82f6' : '4px solid #f59e0b',
+                    background: 'var(--bg-card)'
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: '800', color: '#fff', fontSize: '14px' }}>
+                    <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '14px' }}>
                       {item.qty}x {item.item_name}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
@@ -546,14 +538,14 @@ export default function MenuOrderView({ table, onBack }) {
 
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ fontSize: '16px', fontWeight: '900', color: '#fff' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)' }}>
                   Staged KOT (Table {table.id})
                 </h3>
                 <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Review items before firing to kitchen</p>
               </div>
               <button
                 onClick={() => setIsCartSheetOpen(false)}
-                style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.1)', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--btn-ghost-bg)', border: '1px solid var(--border-subtle)', color: 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <X size={16} />
               </button>
@@ -570,14 +562,15 @@ export default function MenuOrderView({ table, onBack }) {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       padding: '10px 12px',
-                      background: 'rgba(255, 255, 255, 0.04)',
+                      background: 'var(--btn-ghost-bg)',
+                      border: '1px solid var(--border-subtle)',
                       borderRadius: '10px'
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: '800', fontSize: '13px', color: '#fff' }}>{item.name}</div>
+                      <div style={{ fontWeight: '800', fontSize: '13px', color: 'var(--text-main)' }}>{item.name}</div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        ₹{rate} × {item.qty} = <strong style={{ color: '#34d399' }}>₹{rate * item.qty}</strong>
+                        ₹{rate} × {item.qty} = <strong style={{ color: '#10b981' }}>₹{rate * item.qty}</strong>
                       </div>
                       {item.customization && (
                         <div style={{ fontSize: '10px', color: '#fbbf24', marginTop: '2px', fontWeight: '700' }}>
@@ -589,11 +582,11 @@ export default function MenuOrderView({ table, onBack }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <button
                         onClick={() => updateCartQty(item.code, item.customization, -1)}
-                        style={{ width: '28px', height: '28px', borderRadius: '6px', border: 'none', background: 'rgba(255, 255, 255, 0.12)', color: '#fff' }}
+                        style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-card)', color: 'var(--text-main)' }}
                       >
                         -
                       </button>
-                      <span style={{ fontWeight: '900', minWidth: '20px', textAlign: 'center', fontSize: '14px' }}>
+                      <span style={{ fontWeight: '900', minWidth: '20px', textAlign: 'center', fontSize: '14px', color: 'var(--text-main)' }}>
                         {item.qty}
                       </span>
                       <button
@@ -608,7 +601,7 @@ export default function MenuOrderView({ table, onBack }) {
               })}
             </div>
 
-            <div style={{ padding: '14px 18px', borderTop: '1px solid var(--border-subtle)', background: 'rgba(0, 0, 0, 0.4)' }}>
+            <div style={{ padding: '14px 18px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Total Amount</span>
                 <span style={{ fontSize: '22px', fontWeight: '900', color: '#34d399' }}>₹{cartTotalAmount}</span>
@@ -636,12 +629,12 @@ export default function MenuOrderView({ table, onBack }) {
 
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ fontSize: '15px', fontWeight: '900' }}>Custom Prep Note</h3>
-                <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{customizerItem.name}</p>
+                <h3 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>Custom Prep Note</h3>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>{customizerItem.name}</p>
               </div>
               <button
                 onClick={() => setCustomizerItem(null)}
-                style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.1)', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--btn-ghost-bg)', border: '1px solid var(--border-subtle)', color: 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <X size={16} />
               </button>
@@ -656,11 +649,12 @@ export default function MenuOrderView({ table, onBack }) {
                 style={{
                   width: '100%',
                   borderRadius: '10px',
-                  background: 'rgba(0, 0, 0, 0.5)',
+                  background: 'var(--btn-ghost-bg)',
                   border: '1px solid var(--border-bright)',
-                  color: '#fff',
+                  color: 'var(--text-main)',
                   padding: '10px',
-                  fontSize: '13px'
+                  fontSize: '13px',
+                  boxSizing: 'border-box'
                 }}
               />
 
@@ -674,9 +668,9 @@ export default function MenuOrderView({ table, onBack }) {
                       fontSize: '11px',
                       padding: '5px 9px',
                       borderRadius: '7px',
-                      background: 'rgba(255, 255, 255, 0.08)',
+                      background: 'var(--btn-ghost-bg)',
+                      border: '1px solid var(--border-subtle)',
                       color: 'var(--text-muted)',
-                      border: 'none',
                       cursor: 'pointer'
                     }}
                   >

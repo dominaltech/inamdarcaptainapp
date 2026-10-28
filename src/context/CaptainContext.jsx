@@ -15,6 +15,56 @@ export function CaptainProvider({ children }) {
   const [readyAlerts, setReadyAlerts] = useState([]);
   const [isMuted, setIsMuted] = useState(false);
 
+  // PWA Install State & Handlers
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isPwaInstalled, setIsPwaInstalled] = useState(false);
+  const [showIosInstallGuide, setShowIosInstallGuide] = useState(false);
+
+  useEffect(() => {
+    // Detect if running in standalone mode (already installed)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isStandalone) {
+      setIsPwaInstalled(true);
+    }
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setIsPwaInstalled(true);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const installPwa = useCallback(async () => {
+    soundEngine.playTap();
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice && choice.outcome === 'accepted') {
+        setIsPwaInstalled(true);
+      }
+      setDeferredPrompt(null);
+    } else {
+      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (isIos) {
+        setShowIosInstallGuide(true);
+      } else {
+        alert('To install Inamdar Captain: Tap browser menu (⋮) and select "Install app" or "Add to Home screen".');
+      }
+    }
+  }, [deferredPrompt]);
+
   // Theme State: 'dark' (night) or 'light' (day)
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('inamdar_theme') || 'dark';
@@ -55,13 +105,23 @@ export function CaptainProvider({ children }) {
     try {
       setIsLoading(true);
 
-      // 1. Tables (Dine-in only: AC & FAMILY AC; Parcel and Home Delivery excluded from Captain App)
+      // 1. Tables (Dine-in only: AC & FAMILY AC; Parcel and Home Delivery excluded)
+      // Once a bill is gone in unsettled/billed, show table as vacant (AVAILABLE)
       const { data: tData } = await supabase.from('tables').select('*').order('id');
       if (tData) {
-        setTables(tData.filter(t => {
-          const sec = (t.section || '').toUpperCase();
-          return sec !== 'PARCEL' && sec !== 'HOME DELIVERY';
-        }));
+        const dineInTables = tData
+          .filter(t => {
+            const sec = (t.section || '').toUpperCase();
+            return sec !== 'PARCEL' && sec !== 'HOME DELIVERY';
+          })
+          .map(t => {
+            if (t.status === 'BILLED' || t.status === 'UNSETTLED') {
+              supabase.from('tables').update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null }).eq('id', t.id).then();
+              return { ...t, status: 'AVAILABLE', kot_nos: [], active_waiter: null };
+            }
+            return t;
+          });
+        setTables(dineInTables);
       }
 
       // 2. Menu Items sorted by category_order, then code
@@ -107,24 +167,56 @@ export function CaptainProvider({ children }) {
   useEffect(() => {
     loadData();
 
-    // Table channel (Dine-in tables only)
+    // Table channel (Dine-in tables only; Billed/Unsettled tables show as Vacant)
     const tablesChannel = supabase
       .channel('captain_tables_live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
         if (payload.eventType === 'INSERT') {
           const sec = (payload.new.section || '').toUpperCase();
           if (sec !== 'PARCEL' && sec !== 'HOME DELIVERY') {
-            setTables(prev => [...prev.filter(t => t.id !== payload.new.id), payload.new]);
+            const tbl = { ...payload.new };
+            if (tbl.status === 'BILLED' || tbl.status === 'UNSETTLED') {
+              tbl.status = 'AVAILABLE';
+              tbl.kot_nos = [];
+              tbl.active_waiter = null;
+            }
+            setTables(prev => [...prev.filter(t => t.id !== tbl.id), tbl]);
           }
         } else if (payload.eventType === 'UPDATE') {
           const sec = (payload.new.section || '').toUpperCase();
           if (sec !== 'PARCEL' && sec !== 'HOME DELIVERY') {
-            setTables(prev => prev.map(t => (t.id === payload.new.id ? payload.new : t)));
+            const tbl = { ...payload.new };
+            if (tbl.status === 'BILLED' || tbl.status === 'UNSETTLED') {
+              tbl.status = 'AVAILABLE';
+              tbl.kot_nos = [];
+              tbl.active_waiter = null;
+              supabase.from('tables').update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null }).eq('id', tbl.id).then();
+            }
+            setTables(prev => prev.map(t => (t.id === tbl.id ? tbl : t)));
           } else {
             setTables(prev => prev.filter(t => t.id !== payload.new.id));
           }
         } else if (payload.eventType === 'DELETE') {
           setTables(prev => prev.filter(t => t.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+
+    // Bills channel: When bill is generated (sent to unsettled/settled), immediately show table as vacant!
+    const billsChannel = supabase
+      .channel('captain_bills_live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bills' }, payload => {
+        const tableId = payload.new?.table_id;
+        if (tableId) {
+          supabase
+            .from('tables')
+            .update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null })
+            .eq('id', tableId)
+            .then();
+
+          setTables(prev =>
+            prev.map(t => (t.id === tableId ? { ...t, status: 'AVAILABLE', kot_nos: [], active_waiter: null } : t))
+          );
         }
       })
       .subscribe();
@@ -165,6 +257,7 @@ export function CaptainProvider({ children }) {
     return () => {
       supabase.removeChannel(tablesChannel);
       supabase.removeChannel(itemsChannel);
+      supabase.removeChannel(billsChannel);
     };
   }, [loadData]);
 
@@ -330,7 +423,12 @@ export function CaptainProvider({ children }) {
     markAllPickedUp,
     theme,
     toggleTheme,
-    loadData
+    loadData,
+    deferredPrompt,
+    isPwaInstalled,
+    installPwa,
+    showIosInstallGuide,
+    setShowIosInstallGuide
   };
 
   return <CaptainContext.Provider value={value}>{children}</CaptainContext.Provider>;

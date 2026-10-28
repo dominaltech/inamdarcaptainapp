@@ -75,12 +75,12 @@ export default function WaiterAuthModal({ isOpen, onClose }) {
                   onClick={() => handleSelectStaff(member)}
                   className="interactive-card"
                   style={{
-                    background: isSelected ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                    background: isSelected ? 'rgba(59, 130, 246, 0.2)' : 'var(--btn-ghost-bg)',
                     border: isSelected ? '2px solid #3b82f6' : '1px solid var(--border-subtle)',
                     borderRadius: '10px',
                     padding: '10px 6px',
                     textAlign: 'center',
-                    color: '#fff',
+                    color: 'var(--text-main)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -91,7 +91,8 @@ export default function WaiterAuthModal({ isOpen, onClose }) {
                     width: '32px',
                     height: '32px',
                     borderRadius: '50%',
-                    background: isSelected ? '#3b82f6' : 'rgba(255, 255, 255, 0.1)',
+                    background: isSelected ? '#3b82f6' : 'var(--border-subtle)',
+                    color: isSelected ? '#fff' : 'var(--text-main)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -111,14 +112,14 @@ export default function WaiterAuthModal({ isOpen, onClose }) {
           <div style={{ marginBottom: '14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <label style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>
-                Enter PIN for <strong style={{ color: '#fff' }}>{selectedStaff?.name}</strong>:
+                Enter PIN for <strong style={{ color: 'var(--text-main)' }}>{selectedStaff?.name}</strong>:
               </label>
               <span style={{ fontSize: '10px', color: '#60a5fa' }}>PIN: {selectedStaff?.pin}</span>
             </div>
 
             <div style={{
               height: '46px',
-              background: 'rgba(0, 0, 0, 0.5)',
+              background: 'var(--btn-ghost-bg)',
               borderRadius: '10px',
               border: errorMsg ? '1px solid #ef4444' : '1px solid var(--border-bright)',
               display: 'flex',
@@ -164,7 +165,7 @@ export default function WaiterAuthModal({ isOpen, onClose }) {
                   borderRadius: '8px',
                   fontSize: '16px',
                   fontWeight: '700',
-                  color: k === 'C' ? '#f87171' : '#fff'
+                  color: k === 'C' ? '#ef4444' : 'var(--text-main)'
                 }}
               >
                 {k}
