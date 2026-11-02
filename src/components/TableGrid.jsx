@@ -18,13 +18,19 @@ export default function TableGrid({ onSelectTable }) {
 
   // Dine-in sections only (Parcel & Home Delivery removed from Captain App)
   const sections = ['ALL', 'AC', 'FAMILY AC'];
+  const isDineInSection = (sec) => {
+    const s = (sec || '').toUpperCase();
+    return s === 'AC' || s === 'FAMILY AC';
+  };
+
+  const dineInTables = tables.filter(t => isDineInSection(t.section));
 
   const filteredTables = selectedSection === 'ALL'
-    ? tables
-    : tables.filter(t => (t.section || '').toUpperCase() === selectedSection);
+    ? dineInTables
+    : dineInTables.filter(t => (t.section || '').toUpperCase() === selectedSection);
 
-  const availableCount = tables.filter(t => t.status === 'AVAILABLE' || t.status === 'BILLED' || t.status === 'UNSETTLED').length;
-  const occupiedCount = tables.filter(t => t.status === 'OCCUPIED').length;
+  const availableCount = dineInTables.filter(t => t.status === 'AVAILABLE' || t.status === 'BILLED' || t.status === 'UNSETTLED').length;
+  const occupiedCount = dineInTables.filter(t => t.status === 'OCCUPIED').length;
 
   const handleTableTap = (table) => {
     const existingCust = getTableCustomer(table.id);
@@ -174,8 +180,8 @@ export default function TableGrid({ onSelectTable }) {
         }}>
           {sections.map(sec => {
             const count = sec === 'ALL'
-              ? tables.length
-              : tables.filter(t => (t.section || '').toUpperCase() === sec).length;
+              ? dineInTables.length
+              : dineInTables.filter(t => (t.section || '').toUpperCase() === sec).length;
             const isActive = selectedSection === sec;
 
             return (
