@@ -8,11 +8,22 @@ import {
   VolumeX,
   RefreshCw,
   Sun,
-  Moon
+  Moon,
+  Download
 } from 'lucide-react';
 
 export default function CaptainHeader({ onOpenWaiterSwitch }) {
-  const { currentWaiter, isMuted, toggleMute, isLoading, loadData, theme, toggleTheme } = useCaptain();
+  const {
+    currentWaiter,
+    isMuted,
+    toggleMute,
+    isLoading,
+    loadData,
+    theme,
+    toggleTheme,
+    isPwaInstalled,
+    installPwa
+  } = useCaptain();
 
   // First name or short name for waiter
   const waiterShortName = (currentWaiter?.name || 'Waiter').split(' ')[0];
@@ -78,8 +89,31 @@ export default function CaptainHeader({ onOpenWaiterSwitch }) {
         </div>
       </div>
 
-      {/* Right Controls: Day/Night Mode Switch, Refresh, Sound, Waiter Profile */}
+      {/* Right Controls: Install App, Day/Night Mode Switch, Refresh, Sound, Waiter Profile */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        {!isPwaInstalled && (
+          <button
+            onClick={installPwa}
+            className="btn btn-primary"
+            style={{
+              height: '30px',
+              minHeight: '30px',
+              padding: '0 8px',
+              fontSize: '11px',
+              fontWeight: '800',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.35)'
+            }}
+            title="Install Captain App on Home Screen"
+          >
+            <Download size={13} strokeWidth={2.5} />
+            <span>Install</span>
+          </button>
+        )}
+
         {/* Day Mode / Night Mode Small Switch Button */}
         <button
           onClick={toggleTheme}

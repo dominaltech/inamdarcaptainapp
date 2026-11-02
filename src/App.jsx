@@ -5,15 +5,7 @@ import TableGrid from './components/TableGrid';
 import MenuOrderView from './components/MenuOrderView';
 import FoodReadyBanner from './components/FoodReadyBanner';
 import WaiterAuthModal from './components/WaiterAuthModal';
-import {
-  LayoutGrid,
-  Bell,
-  UserCheck,
-  Check,
-  Download,
-  Smartphone,
-  X
-} from 'lucide-react';
+import { X } from 'lucide-react';
 
 function CaptainAppMain() {
   const {
@@ -28,7 +20,6 @@ function CaptainAppMain() {
   } = useCaptain();
   const [selectedTable, setSelectedTable] = useState(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [activeBottomNav, setActiveBottomNav] = useState('tables'); // 'tables' | 'alerts'
 
   return (
     <div className="captain-app-container">
@@ -49,267 +40,14 @@ function CaptainAppMain() {
             table={selectedTable}
             onBack={() => setSelectedTable(null)}
           />
-        ) : activeBottomNav === 'alerts' ? (
-          /* Ready Alerts View */
-          <div style={{ padding: '14px', overflowY: 'auto', height: '100%', width: '100%', boxSizing: 'border-box' }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '14px'
-            }}>
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>
-                  Kitchen Notifications
-                </h3>
-                <p style={{ fontSize: '11px', color: 'var(--text-dim)', margin: '2px 0 0 0' }}>
-                  Live notifications when dishes are marked ready
-                </p>
-              </div>
-
-              {readyAlerts.length > 1 && (
-                <button
-                  onClick={() => clearAllAlerts()}
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: '800',
-                    padding: '5px 10px',
-                    borderRadius: '8px',
-                    background: 'var(--btn-ghost-bg)',
-                    color: 'var(--text-muted)',
-                    border: '1px solid var(--border-subtle)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <X size={12} strokeWidth={2.5} />
-                  <span>Dismiss All ({readyAlerts.length})</span>
-                </button>
-              )}
-            </div>
-
-            {/* PWA Mobile App Install Card in Pickups Tab */}
-            <div
-              className="glass-panel"
-              style={{
-                marginBottom: '14px',
-                padding: '12px 14px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(59, 130, 246, 0.05))',
-                border: '1.5px solid rgba(59, 130, 246, 0.35)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '12px'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                <div style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '10px',
-                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  boxShadow: '0 4px 10px rgba(37, 99, 235, 0.35)'
-                }}>
-                  <Smartphone size={20} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    Install Captain App
-                  </div>
-                  <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '1px' }}>
-                    {isPwaInstalled ? 'Installed on this device' : 'Add to mobile home screen for fast fullscreen ordering'}
-                  </div>
-                </div>
-              </div>
-
-              {isPwaInstalled ? (
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: '800',
-                  color: '#10b981',
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  padding: '5px 10px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  flexShrink: 0
-                }}>
-                  <Check size={13} strokeWidth={3} />
-                  <span>Installed</span>
-                </span>
-              ) : (
-                <button
-                  onClick={installPwa}
-                  className="btn btn-primary"
-                  style={{
-                    height: '34px',
-                    minHeight: '34px',
-                    padding: '0 12px',
-                    fontSize: '11px',
-                    fontWeight: '800',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    flexShrink: 0,
-                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.4)'
-                  }}
-                  title="Install Inamdar Captain as Mobile App"
-                >
-                  <Download size={14} strokeWidth={2.5} />
-                  <span>Install</span>
-                </button>
-              )}
-            </div>
-
-            {readyAlerts.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '50px 16px', color: 'var(--text-muted)' }}>
-                <Bell size={36} style={{ opacity: 0.25, marginBottom: '8px' }} />
-                <p style={{ fontSize: '13px', fontWeight: '700' }}>No kitchen notifications right now.</p>
-                <p style={{ fontSize: '11px', marginTop: '4px', color: 'var(--text-dim)' }}>
-                  When cooks mark dishes ready on KDS, notifications will appear here.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {readyAlerts.map(alert => (
-                  <div
-                    key={alert.id}
-                    className="glass-panel"
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      borderLeft: '4px solid #10b981',
-                      background: 'rgba(16, 185, 129, 0.08)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '10px'
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: '800', color: '#10b981', textTransform: 'uppercase' }}>
-                          TABLE {alert.tableId} • {alert.time}
-                        </span>
-                        <span style={{
-                          fontSize: '9px',
-                          fontWeight: '800',
-                          padding: '1px 6px',
-                          borderRadius: '4px',
-                          background: 'rgba(16, 185, 129, 0.2)',
-                          color: '#10b981'
-                        }}>
-                          READY
-                        </span>
-                      </div>
-                      <div style={{
-                        fontSize: '14.5px',
-                        fontWeight: '900',
-                        color: 'var(--text-main)',
-                        marginTop: '2px',
-                        wordBreak: 'break-word'
-                      }}>
-                        {alert.qty}x {alert.dish}
-                      </div>
-                    </div>
-
-                    {/* Notification Dismiss Button */}
-                    <button
-                      onClick={() => dismissReadyAlert(alert.id)}
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '8px',
-                        background: 'var(--btn-ghost-bg)',
-                        color: 'var(--text-muted)',
-                        border: '1px solid var(--border-subtle)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}
-                      title="Dismiss notification"
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         ) : (
-          /* Table Floor Grid */
+          /* Table Floor Grid - Full Screen Ordering */
           <TableGrid onSelectTable={table => setSelectedTable(table)} />
         )}
 
+        {/* Realtime Floating Notification Banner when Dishes are Ready */}
         <FoodReadyBanner />
       </main>
-
-      {/* Mobile Bottom Navigation Bar (Hidden when taking order on a specific table) */}
-      {!selectedTable && (
-        <nav className="mobile-nav-bar">
-          <button
-            onClick={() => setActiveBottomNav('tables')}
-            className={`mobile-nav-item ${activeBottomNav === 'tables' ? 'active' : ''}`}
-          >
-            <div className="nav-icon-wrap">
-              <LayoutGrid size={17} />
-            </div>
-            <span>Tables</span>
-          </button>
-
-          <button
-            onClick={() => setActiveBottomNav('alerts')}
-            className={`mobile-nav-item ${activeBottomNav === 'alerts' ? 'active' : ''}`}
-          >
-            <div className="nav-icon-wrap" style={{ position: 'relative' }}>
-              <Bell size={17} />
-              {readyAlerts.length > 0 && (
-                <span style={{
-                  position: 'absolute',
-                  top: '-2px',
-                  right: '-2px',
-                  width: '13px',
-                  height: '13px',
-                  borderRadius: '50%',
-                  background: '#10b981',
-                  color: '#fff',
-                  fontSize: '9px',
-                  fontWeight: '900',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  {readyAlerts.length}
-                </span>
-              )}
-            </div>
-            <span>Alerts</span>
-          </button>
-
-          <button
-            onClick={() => setIsAuthOpen(true)}
-            className="mobile-nav-item"
-          >
-            <div className="nav-icon-wrap">
-              <UserCheck size={17} />
-            </div>
-            <span>{currentWaiter?.name?.split(' ')[0] || 'Waiter'}</span>
-          </button>
-        </nav>
-      )}
 
       {/* Waiter Switcher Modal */}
       <WaiterAuthModal

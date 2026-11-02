@@ -219,7 +219,7 @@ export default function TableGrid({ onSelectTable }) {
         flex: 1,
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
-        padding: '8px 10px 85px 10px',
+        padding: '8px 10px 24px 10px',
         display: 'grid',
         gridTemplateColumns: `repeat(${columnsMode}, 1fr)`,
         gap: '8px',
