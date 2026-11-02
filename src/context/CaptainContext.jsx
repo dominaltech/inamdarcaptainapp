@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { soundEngine } from '../services/soundEngine';
+import { getAllDishImages, saveDishImage, deleteDishImage, compressImage } from '../services/dishImageStore';
 
 const CaptainContext = createContext(null);
 
@@ -14,6 +15,7 @@ export function CaptainProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [readyAlerts, setReadyAlerts] = useState([]);
   const [isMuted, setIsMuted] = useState(false);
+  const [dishImages, setDishImages] = useState({});
 
   // PWA Install State & Handlers
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -64,6 +66,68 @@ export function CaptainProvider({ children }) {
       }
     }
   }, [deferredPrompt]);
+
+  // Load local dish images from IndexedDB
+  useEffect(() => {
+    getAllDishImages().then(imgs => {
+      if (imgs) setDishImages(imgs);
+    });
+  }, []);
+
+  const uploadDishImage = useCallback(async (dishCode, file) => {
+    try {
+      soundEngine.playTap();
+      const dataUrl = await compressImage(file);
+      await saveDishImage(dishCode, dataUrl);
+      setDishImages(prev => ({ ...prev, [String(dishCode)]: dataUrl }));
+      return true;
+    } catch (err) {
+      console.error('Failed to upload image:', err);
+      return false;
+    }
+  }, []);
+
+  const removeDishImage = useCallback(async (dishCode) => {
+    try {
+      soundEngine.playTap();
+      await deleteDishImage(dishCode);
+      setDishImages(prev => {
+        const next = { ...prev };
+        delete next[String(dishCode)];
+        return next;
+      });
+      return true;
+    } catch (err) {
+      console.error('Failed to remove image:', err);
+      return false;
+    }
+  }, []);
+
+  const getTableCustomer = useCallback((tableId) => {
+    const saved = localStorage.getItem(`inamdar_cust_${tableId}`);
+    if (saved) {
+      try { return JSON.parse(saved); } catch(e) {}
+    }
+    const t = tables.find(x => x.id === tableId);
+    if (t?.active_waiter && t.active_waiter.includes(' • ')) {
+      const parts = t.active_waiter.split(' • ')[1];
+      if (parts) {
+        const match = parts.match(/^(.*?)(?:\s*\((.*?)\))?$/);
+        if (match) {
+          return { name: match[1]?.trim() || '', phone: match[2]?.trim() || '' };
+        }
+      }
+    }
+    return { name: '', phone: '' };
+  }, [tables]);
+
+  const setTableCustomer = useCallback((tableId, { name = '', phone = '' }) => {
+    if (name || phone) {
+      localStorage.setItem(`inamdar_cust_${tableId}`, JSON.stringify({ name, phone }));
+    } else {
+      localStorage.removeItem(`inamdar_cust_${tableId}`);
+    }
+  }, []);
 
   // Theme State: 'dark' (night) or 'light' (day)
   const [theme, setTheme] = useState(() => {
@@ -208,6 +272,7 @@ export function CaptainProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bills' }, payload => {
         const tableId = payload.new?.table_id;
         if (tableId) {
+          localStorage.removeItem(`inamdar_cust_${tableId}`);
           supabase
             .from('tables')
             .update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null })
@@ -261,11 +326,16 @@ export function CaptainProvider({ children }) {
     };
   }, [loadData]);
 
-  // Fire KOT to Kitchen
-  const fireKot = useCallback(async ({ tableId, cartItems, section }) => {
+  // Fire KOT to Kitchen (with Customer Name & Phone Number support)
+  const fireKot = useCallback(async ({ tableId, cartItems, section, customerName = '', customerPhone = '' }) => {
     soundEngine.playTap();
     const currentTable = tables.find(t => t.id === tableId);
     const targetSection = section || currentTable?.section || 'AC';
+
+    // Store customer details locally for this table
+    if (customerName || customerPhone) {
+      localStorage.setItem(`inamdar_cust_${tableId}`, JSON.stringify({ name: customerName, phone: customerPhone }));
+    }
 
     // 1. Fetch & Increment Counter
     const { data: counter } = await supabase
@@ -283,6 +353,10 @@ export function CaptainProvider({ children }) {
 
     setDailyKotCounter(nextKotNum + 1);
 
+    // Formatted waiter & customer display for KOT tickets & Kitchen
+    const custInfo = customerName ? ` • ${customerName}${customerPhone ? ` (${customerPhone})` : ''}` : '';
+    const waiterDisplay = `${currentWaiter.name}${custInfo}`;
+
     // 2. Insert KOT Header
     const { data: newKot, error: kotErr } = await supabase
       .from('kots')
@@ -291,7 +365,7 @@ export function CaptainProvider({ children }) {
           kot_number: nextKotNum,
           table_id: tableId,
           section: targetSection,
-          waiter_name: currentWaiter.name,
+          waiter_name: waiterDisplay,
           department: 'ALL',
           source: 'CAPTAIN_APP',
           status: 'PENDING',
@@ -331,7 +405,7 @@ export function CaptainProvider({ children }) {
       .from('tables')
       .update({
         status: 'OCCUPIED',
-        active_waiter: currentWaiter.name,
+        active_waiter: waiterDisplay,
         kot_nos: updatedKotNos,
         updated_at: new Date().toISOString(),
       })
@@ -349,19 +423,27 @@ export function CaptainProvider({ children }) {
   const setTableStatus = useCallback(async (tableId, status) => {
     soundEngine.playTap();
     const payload = { status };
-    if (status === 'AVAILABLE') payload.kot_nos = [];
+    if (status === 'AVAILABLE') {
+      payload.kot_nos = [];
+      payload.active_waiter = null;
+      localStorage.removeItem(`inamdar_cust_${tableId}`);
+    }
     await supabase.from('tables').update(payload).eq('id', tableId);
-    setTables(prev => prev.map(t => (t.id === tableId ? { ...t, status } : t)));
+    setTables(prev => prev.map(t => (t.id === tableId ? { ...t, ...payload } : t)));
   }, []);
 
   const dismissReadyAlert = useCallback((id) => {
     setReadyAlerts(prev => prev.filter(a => a.id !== id));
   }, []);
 
-  // Mark single food alert as Picked Up / Served
+  const clearAllAlerts = useCallback(() => {
+    soundEngine.playTap();
+    setReadyAlerts([]);
+  }, []);
+
+  // Mark single food alert as Picked Up / Served (Kept for background data sync)
   const markPickedUp = useCallback(async (alert) => {
     soundEngine.playTap();
-    // Optimistically remove from alert list
     setReadyAlerts(prev => prev.filter(a => a.id !== alert.id && (alert.itemId ? a.itemId !== alert.itemId : true)));
 
     if (alert.itemId) {
@@ -419,6 +501,7 @@ export function CaptainProvider({ children }) {
     setTableStatus,
     readyAlerts,
     dismissReadyAlert,
+    clearAllAlerts,
     markPickedUp,
     markAllPickedUp,
     theme,
@@ -428,7 +511,12 @@ export function CaptainProvider({ children }) {
     isPwaInstalled,
     installPwa,
     showIosInstallGuide,
-    setShowIosInstallGuide
+    setShowIosInstallGuide,
+    dishImages,
+    uploadDishImage,
+    removeDishImage,
+    getTableCustomer,
+    setTableCustomer
   };
 
   return <CaptainContext.Provider value={value}>{children}</CaptainContext.Provider>;

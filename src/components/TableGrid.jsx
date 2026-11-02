@@ -9,10 +9,12 @@ import {
 } from 'lucide-react';
 
 export default function TableGrid({ onSelectTable }) {
-  const { tables, kots, orderItems, updateTablePax } = useCaptain();
+  const { tables, kots, orderItems, updateTablePax, getTableCustomer, setTableCustomer } = useCaptain();
   const [selectedSection, setSelectedSection] = useState('ALL');
   const [columnsMode, setColumnsMode] = useState(3); // 3 (Compact) or 2 (Comfortable)
   const [paxSheetTable, setPaxSheetTable] = useState(null);
+  const [custNameInput, setCustNameInput] = useState('');
+  const [custPhoneInput, setCustPhoneInput] = useState('');
 
   // Dine-in sections only (Parcel & Home Delivery removed from Captain App)
   const sections = ['ALL', 'AC', 'FAMILY AC'];
@@ -25,17 +27,27 @@ export default function TableGrid({ onSelectTable }) {
   const occupiedCount = tables.filter(t => t.status === 'OCCUPIED').length;
 
   const handleTableTap = (table) => {
+    const existingCust = getTableCustomer(table.id);
+    setCustNameInput(existingCust.name || '');
+    setCustPhoneInput(existingCust.phone || '');
+
     if (table.status !== 'OCCUPIED') {
       setPaxSheetTable(table);
     } else {
-      onSelectTable(table);
+      onSelectTable({ ...table, customerName: existingCust.name, customerPhone: existingCust.phone });
     }
   };
 
   const handleConfirmPax = (pax) => {
     if (paxSheetTable) {
       updateTablePax(paxSheetTable.id, pax);
-      const updated = { ...paxSheetTable, pax };
+      setTableCustomer(paxSheetTable.id, { name: custNameInput.trim(), phone: custPhoneInput.trim() });
+      const updated = {
+        ...paxSheetTable,
+        pax,
+        customerName: custNameInput.trim(),
+        customerPhone: custPhoneInput.trim()
+      };
       setPaxSheetTable(null);
       onSelectTable(updated);
     }
@@ -368,6 +380,47 @@ export default function TableGrid({ onSelectTable }) {
             </div>
 
             <div style={{ padding: '16px' }}>
+              {/* Optional Customer Name & Phone Number */}
+              <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Customer Name (Optional)"
+                  value={custNameInput}
+                  onChange={e => setCustNameInput(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '38px',
+                    borderRadius: '8px',
+                    background: 'var(--btn-ghost-bg)',
+                    border: '1px solid var(--border-bright)',
+                    color: 'var(--text-main)',
+                    padding: '0 12px',
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <input
+                  type="tel"
+                  placeholder="Customer Mobile Number (Optional)"
+                  value={custPhoneInput}
+                  onChange={e => setCustPhoneInput(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '38px',
+                    borderRadius: '8px',
+                    background: 'var(--btn-ghost-bg)',
+                    border: '1px solid var(--border-bright)',
+                    color: 'var(--text-main)',
+                    padding: '0 12px',
+                    fontSize: '12.5px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                Select Table Guests (Pax):
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', marginBottom: '16px' }}>
                 {[1, 2, 3, 4, 5, 6, 7, 8, 10, 12].map(num => (
                   <button

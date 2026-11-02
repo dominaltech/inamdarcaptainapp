@@ -19,8 +19,8 @@ function CaptainAppMain() {
   const {
     currentWaiter,
     readyAlerts,
-    markPickedUp,
-    markAllPickedUp,
+    dismissReadyAlert,
+    clearAllAlerts,
     isPwaInstalled,
     installPwa,
     showIosInstallGuide,
@@ -60,32 +60,32 @@ function CaptainAppMain() {
             }}>
               <div>
                 <h3 style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>
-                  Kitchen Pickups
+                  Kitchen Notifications
                 </h3>
                 <p style={{ fontSize: '11px', color: 'var(--text-dim)', margin: '2px 0 0 0' }}>
-                  Dishes marked ready by kitchen for waiter pickup
+                  Live notifications when dishes are marked ready
                 </p>
               </div>
 
               {readyAlerts.length > 1 && (
                 <button
-                  onClick={() => markAllPickedUp()}
+                  onClick={() => clearAllAlerts()}
                   style={{
                     fontSize: '11px',
                     fontWeight: '800',
                     padding: '5px 10px',
                     borderRadius: '8px',
-                    background: 'rgba(16, 185, 129, 0.15)',
-                    color: '#10b981',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    background: 'var(--btn-ghost-bg)',
+                    color: 'var(--text-muted)',
+                    border: '1px solid var(--border-subtle)',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px'
                   }}
                 >
-                  <Check size={12} strokeWidth={3} />
-                  <span>Pick All ({readyAlerts.length})</span>
+                  <X size={12} strokeWidth={2.5} />
+                  <span>Dismiss All ({readyAlerts.length})</span>
                 </button>
               )}
             </div>
@@ -175,9 +175,9 @@ function CaptainAppMain() {
             {readyAlerts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '50px 16px', color: 'var(--text-muted)' }}>
                 <Bell size={36} style={{ opacity: 0.25, marginBottom: '8px' }} />
-                <p style={{ fontSize: '13px', fontWeight: '700' }}>No pending pickups right now.</p>
+                <p style={{ fontSize: '13px', fontWeight: '700' }}>No kitchen notifications right now.</p>
                 <p style={{ fontSize: '11px', marginTop: '4px', color: 'var(--text-dim)' }}>
-                  When cooks mark dishes ready on KDS, alerts will appear here.
+                  When cooks mark dishes ready on KDS, notifications will appear here.
                 </p>
               </div>
             ) : (
@@ -198,8 +198,20 @@ function CaptainAppMain() {
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '10px', fontWeight: '800', color: '#10b981', textTransform: 'uppercase' }}>
-                        TABLE {alert.tableId} • {alert.time}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: '800', color: '#10b981', textTransform: 'uppercase' }}>
+                          TABLE {alert.tableId} • {alert.time}
+                        </span>
+                        <span style={{
+                          fontSize: '9px',
+                          fontWeight: '800',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          color: '#10b981'
+                        }}>
+                          READY
+                        </span>
                       </div>
                       <div style={{
                         fontSize: '14.5px',
@@ -212,33 +224,25 @@ function CaptainAppMain() {
                       </div>
                     </div>
 
-                    {/* Interactive Pickup Action Button */}
+                    {/* Notification Dismiss Button */}
                     <button
-                      onClick={() => markPickedUp(alert)}
+                      onClick={() => dismissReadyAlert(alert.id)}
                       style={{
-                        fontSize: '11px',
-                        fontWeight: '800',
-                        padding: '7px 13px',
+                        width: '32px',
+                        height: '32px',
                         borderRadius: '8px',
-                        background: '#10b981',
-                        color: '#ffffff',
-                        border: 'none',
+                        background: 'var(--btn-ghost-bg)',
+                        color: 'var(--text-muted)',
+                        border: '1px solid var(--border-subtle)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '5px',
-                        flexShrink: 0,
-                        boxShadow: '0 2px 6px rgba(16, 185, 129, 0.4)',
-                        transition: 'transform 0.1s ease, background-color 0.15s ease'
+                        justifyContent: 'center',
+                        flexShrink: 0
                       }}
-                      onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'}
-                      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-                      onTouchStart={e => e.currentTarget.style.transform = 'scale(0.96)'}
-                      onTouchEnd={e => e.currentTarget.style.transform = 'scale(1)'}
-                      title="Tap to mark picked up and served"
+                      title="Dismiss notification"
                     >
-                      <Check size={14} strokeWidth={3} />
-                      <span>PICKUP</span>
+                      <X size={15} />
                     </button>
                   </div>
                 ))}
@@ -292,7 +296,7 @@ function CaptainAppMain() {
                 </span>
               )}
             </div>
-            <span>Pickups</span>
+            <span>Alerts</span>
           </button>
 
           <button

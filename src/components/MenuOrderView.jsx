@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useCaptain } from '../context/CaptainContext';
 import { soundEngine } from '../services/soundEngine';
 import {
@@ -12,7 +12,11 @@ import {
   X,
   ChevronRight,
   ShoppingBag,
-  Trash2
+  Trash2,
+  Camera,
+  User,
+  Phone,
+  Edit3
 } from 'lucide-react';
 
 export default function MenuOrderView({ table, onBack }) {
@@ -21,7 +25,12 @@ export default function MenuOrderView({ table, onBack }) {
     fireKot,
     orderItems,
     updateTablePax,
-    setTableStatus
+    setTableStatus,
+    dishImages,
+    uploadDishImage,
+    removeDishImage,
+    getTableCustomer,
+    setTableCustomer
   } = useCaptain();
 
   const [activeTab, setActiveTab] = useState('menu'); // 'menu' | 'active_kots'
@@ -32,6 +41,17 @@ export default function MenuOrderView({ table, onBack }) {
   const [isFiring, setIsFiring] = useState(false);
   const [customizerItem, setCustomizerItem] = useState(null);
   const [customNote, setCustomNote] = useState('');
+
+  // Customer Name and Phone Number state
+  const existingCust = getTableCustomer(table.id);
+  const [customerName, setCustomerName] = useState(table.customerName || existingCust.name || '');
+  const [customerPhone, setCustomerPhone] = useState(table.customerPhone || existingCust.phone || '');
+  const [isCustModalOpen, setIsCustModalOpen] = useState(false);
+
+  // Dish Image Upload State
+  const fileInputRef = useRef(null);
+  const [uploadTargetCode, setUploadTargetCode] = useState(null);
+  const [previewDish, setPreviewDish] = useState(null);
 
   const isAcSection = (table.section || '').toUpperCase().includes('AC');
 
@@ -135,6 +155,28 @@ export default function MenuOrderView({ table, onBack }) {
     return sum + item.qty * rate;
   }, 0);
 
+  const handleUpdateCustomer = (name, phone) => {
+    setCustomerName(name);
+    setCustomerPhone(phone);
+    setTableCustomer(table.id, { name, phone });
+  };
+
+  const handleTriggerUpload = (dishCode) => {
+    setUploadTargetCode(dishCode);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (file && uploadTargetCode) {
+      await uploadDishImage(uploadTargetCode, file);
+      setPreviewDish(null);
+    }
+  };
+
   const handleFireKot = async () => {
     if (cart.length === 0 || isFiring) return;
     setIsFiring(true);
@@ -143,7 +185,9 @@ export default function MenuOrderView({ table, onBack }) {
       await fireKot({
         tableId: table.id,
         section: table.section,
-        cartItems: cart
+        cartItems: cart,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim()
       });
       setCart([]);
       setIsCartSheetOpen(false);
@@ -159,6 +203,15 @@ export default function MenuOrderView({ table, onBack }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden' }}>
+      {/* Hidden file input for dish image upload */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*"
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+      />
+
       {/* Mobile Top Bar */}
       <div style={{
         padding: '6px 10px',
@@ -172,7 +225,7 @@ export default function MenuOrderView({ table, onBack }) {
         boxSizing: 'border-box',
         gap: '6px'
       }}>
-        {/* Left: Back & Table Info */}
+        {/* Left: Back & Table Info & Customer Indicator */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
           <button
             onClick={onBack}
@@ -183,14 +236,42 @@ export default function MenuOrderView({ table, onBack }) {
           </button>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>T-{table.id}</span>
+              <span style={{ fontSize: '14px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>T-{table.id}</span>
               <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '4px', background: isAcSection ? 'rgba(59, 130, 246, 0.2)' : 'rgba(168, 85, 247, 0.2)', color: isAcSection ? '#60a5fa' : '#c084fc', fontWeight: '800', whiteSpace: 'nowrap' }}>
                 {isAcSection ? 'AC' : 'Hall'}
               </span>
             </div>
-            <div style={{ fontSize: '9px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {table.section}
-            </div>
+
+            {/* Customer Name & Mobile Pill (Tap to Edit) */}
+            <button
+              type="button"
+              onClick={() => setIsCustModalOpen(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '9.5px',
+                fontWeight: '700',
+                color: customerName ? '#10b981' : 'var(--text-dim)',
+                background: customerName ? 'rgba(16, 185, 129, 0.12)' : 'var(--btn-ghost-bg)',
+                border: '1px solid ' + (customerName ? 'rgba(16, 185, 129, 0.25)' : 'var(--border-subtle)'),
+                borderRadius: '4px',
+                padding: '1px 6px',
+                cursor: 'pointer',
+                marginTop: '1px',
+                maxWidth: '180px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+              title="Click to edit customer details"
+            >
+              <User size={10} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {customerName ? `${customerName}${customerPhone ? ` (${customerPhone})` : ''}` : '+ Customer'}
+              </span>
+              <Edit3 size={8} style={{ opacity: 0.7 }} />
+            </button>
           </div>
         </div>
 
@@ -335,23 +416,87 @@ export default function MenuOrderView({ table, onBack }) {
             {filteredMenu.map(dish => {
               const activePrice = isAcSection ? dish.ac_rate : dish.hall_rate;
               const cartItem = cart.find(i => i.code === dish.code);
+              const dishImg = dishImages[dish.code];
 
               return (
                 <div
                   key={dish.code}
                   className="glass-panel"
                   style={{
-                    padding: '12px 14px',
+                    padding: '10px 12px',
                     borderRadius: '12px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '12px',
+                    gap: '10px',
                     border: cartItem ? '1.5px solid #3b82f6' : '1px solid var(--border-subtle)',
                     background: cartItem ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-card)'
                   }}
                 >
-                  {/* Left: Dish Code, Name, Price */}
+                  {/* Left: Food Item Image Thumbnail or Upload Button (Stored Locally in IDB) */}
+                  {dishImg ? (
+                    <div
+                      onClick={() => setPreviewDish(dish)}
+                      style={{
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                        position: 'relative',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        border: '1.5px solid var(--border-bright)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
+                      }}
+                      title="Tap to view or change dish photo"
+                    >
+                      <img
+                        src={dishImg}
+                        alt={dish.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        background: 'rgba(0, 0, 0, 0.55)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1px 0'
+                      }}>
+                        <Camera size={9} color="#fff" />
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleTriggerUpload(dish.code)}
+                      style={{
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '10px',
+                        border: '1.5px dashed var(--border-bright)',
+                        background: 'var(--btn-ghost-bg)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '2px',
+                        color: 'var(--text-dim)',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        padding: 0
+                      }}
+                      title="Upload photo for this dish (stored locally)"
+                    >
+                      <Camera size={15} />
+                      <span style={{ fontSize: '8.5px', fontWeight: '800' }}>+ Photo</span>
+                    </button>
+                  )}
+
+                  {/* Middle: Dish Code, Name, Price */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
                       <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', fontWeight: '700', color: 'var(--text-dim)', padding: '1px 5px', background: 'var(--btn-ghost-bg)', borderRadius: '4px' }}>
@@ -551,6 +696,61 @@ export default function MenuOrderView({ table, onBack }) {
               </button>
             </div>
 
+            {/* Customer Details in Cart Review Sheet */}
+            <div style={{
+              margin: '12px 18px 0 18px',
+              padding: '10px 12px',
+              background: 'var(--btn-ghost-bg)',
+              borderRadius: '10px',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)' }}>
+                <User size={13} />
+                <span>Customer Information (Optional)</span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Customer Name"
+                  value={customerName}
+                  onChange={e => handleUpdateCustomer(e.target.value, customerPhone)}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '34px',
+                    borderRadius: '8px',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-bright)',
+                    padding: '0 10px',
+                    fontSize: '12px',
+                    color: 'var(--text-main)',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <input
+                  type="tel"
+                  placeholder="Mobile No."
+                  value={customerPhone}
+                  onChange={e => handleUpdateCustomer(customerName, e.target.value)}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '34px',
+                    borderRadius: '8px',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-bright)',
+                    padding: '0 10px',
+                    fontSize: '12px',
+                    color: 'var(--text-main)',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {cart.map(item => {
                 const rate = isAcSection ? item.ac_rate : item.hall_rate;
@@ -695,6 +895,172 @@ export default function MenuOrderView({ table, onBack }) {
                   Save Prep Note
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Info Modal */}
+      {isCustModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsCustModalOpen(false)}>
+          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
+            width: '90%',
+            maxWidth: '360px',
+            borderRadius: '16px',
+            padding: '18px',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-subtle)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <User size={16} />
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>Customer Info</h4>
+                  <p style={{ fontSize: '10.5px', color: 'var(--text-dim)', margin: 0 }}>Table {table.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCustModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Customer Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Rahul Sharma"
+                  value={customerName}
+                  onChange={e => handleUpdateCustomer(e.target.value, customerPhone)}
+                  style={{
+                    width: '100%',
+                    height: '38px',
+                    borderRadius: '9px',
+                    background: 'var(--btn-ghost-bg)',
+                    border: '1px solid var(--border-bright)',
+                    padding: '0 12px',
+                    color: 'var(--text-main)',
+                    fontSize: '13px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Mobile Number
+                </label>
+                <input
+                  type="tel"
+                  placeholder="e.g. 9876543210"
+                  value={customerPhone}
+                  onChange={e => handleUpdateCustomer(customerName, e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '38px',
+                    borderRadius: '9px',
+                    background: 'var(--btn-ghost-bg)',
+                    border: '1px solid var(--border-bright)',
+                    padding: '0 12px',
+                    color: 'var(--text-main)',
+                    fontSize: '13px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsCustModalOpen(false)}
+              className="btn btn-primary"
+              style={{ width: '100%', height: '40px', fontSize: '13px', fontWeight: '800' }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Dish Photo Preview and Manage Modal */}
+      {previewDish && (
+        <div className="modal-overlay" onClick={() => setPreviewDish(null)}>
+          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
+            width: '90%',
+            maxWidth: '340px',
+            borderRadius: '16px',
+            padding: '16px',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-subtle)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h4 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>
+                  {previewDish.name}
+                </h4>
+                <p style={{ fontSize: '10.5px', color: 'var(--text-dim)', margin: '2px 0 0 0' }}>
+                  #{previewDish.code} • Stored Locally on Device
+                </p>
+              </div>
+              <button
+                onClick={() => setPreviewDish(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{
+              width: '100%',
+              height: '200px',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              background: '#000',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <img
+                src={dishImages[previewDish.code]}
+                alt={previewDish.name}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => handleTriggerUpload(previewDish.code)}
+                className="btn btn-primary"
+                style={{ flex: 1, height: '38px', fontSize: '12px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+              >
+                <Camera size={14} />
+                <span>Change Photo</span>
+              </button>
+
+              <button
+                onClick={async () => {
+                  await removeDishImage(previewDish.code);
+                  setPreviewDish(null);
+                }}
+                className="btn btn-ghost"
+                style={{ height: '38px', padding: '0 12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                title="Remove photo"
+              >
+                <Trash2 size={14} />
+                <span style={{ fontSize: '12px', fontWeight: '800' }}>Remove</span>
+              </button>
             </div>
           </div>
         </div>

@@ -1,9 +1,9 @@
 import React from 'react';
 import { useCaptain } from '../context/CaptainContext';
-import { Bell, Check } from 'lucide-react';
+import { Bell, X } from 'lucide-react';
 
 export default function FoodReadyBanner() {
-  const { readyAlerts, markPickedUp } = useCaptain();
+  const { readyAlerts, dismissReadyAlert } = useCaptain();
 
   if (!readyAlerts || readyAlerts.length === 0) return null;
 
@@ -59,25 +59,22 @@ export default function FoodReadyBanner() {
           </div>
 
           <button
-            onClick={() => markPickedUp(alert)}
-            title="Mark Picked Up / Served"
+            onClick={() => dismissReadyAlert(alert.id)}
+            title="Dismiss notification"
             style={{
-              background: '#10b981',
+              background: 'rgba(255, 255, 255, 0.15)',
               border: 'none',
-              borderRadius: '7px',
-              padding: '6px 10px',
+              borderRadius: '6px',
+              width: '28px',
+              height: '28px',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
+              justifyContent: 'center',
               color: '#fff',
-              fontSize: '11px',
-              fontWeight: '800',
-              cursor: 'pointer',
-              flexShrink: 0
+              cursor: 'pointer'
             }}
           >
-            <Check size={14} strokeWidth={3} />
-            <span>PICKUP</span>
+            <X size={15} />
           </button>
         </div>
       ))}
