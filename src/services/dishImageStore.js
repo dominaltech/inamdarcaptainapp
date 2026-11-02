@@ -134,3 +134,4 @@ export async function deleteDishImage(code) {
     return false;
   }
 }
+
