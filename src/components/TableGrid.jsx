@@ -9,38 +9,45 @@ import {
 } from 'lucide-react';
 
 export default function TableGrid({ onSelectTable }) {
-  const { tables, kots, orderItems, updateTablePax, getTableCustomer, setTableCustomer } = useCaptain();
+  const { tables, orderItems, updateTablePax, getTableCustomer, setTableCustomer } = useCaptain();
   const [selectedSection, setSelectedSection] = useState('ALL');
   const [columnsMode, setColumnsMode] = useState(3); // 3 (Compact) or 2 (Comfortable)
   const [paxSheetTable, setPaxSheetTable] = useState(null);
   const [custNameInput, setCustNameInput] = useState('');
   const [custPhoneInput, setCustPhoneInput] = useState('');
 
-  // Dine-in sections only (Parcel & Home Delivery removed from Captain App)
-  const sections = ['ALL', 'AC', 'FAMILY AC'];
+  // Dine-in sections only: GENERAL (Tables 1-20) and FAMILY AC (Tables 21-40)
+  // Supports legacy 'AC' for backwards compatibility during migration
+  const sections = ['ALL', 'GENERAL', 'FAMILY AC'];
   const isDineInSection = (sec) => {
     const s = (sec || '').toUpperCase();
-    return s === 'AC' || s === 'FAMILY AC';
+    return s === 'GENERAL' || s === 'FAMILY AC' || s === 'AC';
   };
 
   const dineInTables = tables.filter(t => isDineInSection(t.section));
 
   const filteredTables = selectedSection === 'ALL'
     ? dineInTables
-    : dineInTables.filter(t => (t.section || '').toUpperCase() === selectedSection);
+    : dineInTables.filter(t => {
+        const s = (t.section || '').toUpperCase();
+        if (selectedSection === 'GENERAL') return s === 'GENERAL' || s === 'AC';
+        return s === selectedSection;
+      });
 
   const availableCount = dineInTables.filter(t => t.status === 'AVAILABLE' || t.status === 'BILLED' || t.status === 'UNSETTLED').length;
   const occupiedCount = dineInTables.filter(t => t.status === 'OCCUPIED').length;
 
   const handleTableTap = (table) => {
     const existingCust = getTableCustomer(table.id);
-    setCustNameInput(existingCust.name || '');
-    setCustPhoneInput(existingCust.phone || '');
+    const cName = table.customer_name || existingCust.name || '';
+    const cPhone = table.customer_phone || existingCust.phone || '';
+    setCustNameInput(cName);
+    setCustPhoneInput(cPhone);
 
     if (table.status !== 'OCCUPIED') {
       setPaxSheetTable(table);
     } else {
-      onSelectTable({ ...table, customerName: existingCust.name, customerPhone: existingCust.phone });
+      onSelectTable({ ...table, customerName: cName, customerPhone: cPhone });
     }
   };
 
@@ -181,7 +188,11 @@ export default function TableGrid({ onSelectTable }) {
           {sections.map(sec => {
             const count = sec === 'ALL'
               ? dineInTables.length
-              : dineInTables.filter(t => (t.section || '').toUpperCase() === sec).length;
+              : dineInTables.filter(t => {
+                  const s = (t.section || '').toUpperCase();
+                  if (sec === 'GENERAL') return s === 'GENERAL' || s === 'AC';
+                  return s === sec;
+                }).length;
             const isActive = selectedSection === sec;
 
             return (
@@ -264,7 +275,8 @@ export default function TableGrid({ onSelectTable }) {
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                height: columnsMode === 3 ? '76px' : '96px',
+                minHeight: columnsMode === 3 ? '80px' : '96px',
+                height: 'auto',
                 boxSizing: 'border-box',
                 background: isOccupied
                   ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.14), var(--bg-card))'
@@ -304,14 +316,14 @@ export default function TableGrid({ onSelectTable }) {
                 <div style={{
                   fontSize: '8px',
                   fontWeight: '800',
-                  color: (table.section || '').includes('AC') ? '#3b82f6' : '#8b5cf6',
+                  color: (table.section || '').toUpperCase().includes('FAMILY AC') ? '#8b5cf6' : '#0284c7',
                   textTransform: 'uppercase',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                   marginTop: '1px'
                 }}>
-                  {table.section}
+                  {table.section || 'GENERAL'}
                 </div>
               </div>
 
@@ -331,6 +343,19 @@ export default function TableGrid({ onSelectTable }) {
                   </div>
                 ) : (
                   <div>
+                    {table.customer_name && (
+                      <div style={{
+                        fontSize: '8.5px',
+                        color: 'var(--text-main)',
+                        fontWeight: '700',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        marginBottom: '1px'
+                      }}>
+                        👤 {table.customer_name}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <strong style={{ color: '#10b981', fontSize: columnsMode === 3 ? '11px' : '13px', fontWeight: '900' }}>
                         ₹{runningAmount}

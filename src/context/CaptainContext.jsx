@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { soundEngine } from '../services/soundEngine';
 import { getAllDishImages, saveDishImage, deleteDishImage, compressImage } from '../services/dishImageStore';
@@ -104,11 +104,14 @@ export function CaptainProvider({ children }) {
   }, []);
 
   const getTableCustomer = useCallback((tableId) => {
+    const t = tables.find(x => x.id === tableId);
+    if (t?.customer_name || t?.customer_phone) {
+      return { name: t.customer_name || '', phone: t.customer_phone || '' };
+    }
     const saved = localStorage.getItem(`inamdar_cust_${tableId}`);
     if (saved) {
-      try { return JSON.parse(saved); } catch(e) {}
+      try { return JSON.parse(saved); } catch { /* Ignore malformed JSON */ }
     }
-    const t = tables.find(x => x.id === tableId);
     if (t?.active_waiter && t.active_waiter.includes(' • ')) {
       const parts = t.active_waiter.split(' • ')[1];
       if (parts) {
@@ -121,12 +124,28 @@ export function CaptainProvider({ children }) {
     return { name: '', phone: '' };
   }, [tables]);
 
-  const setTableCustomer = useCallback((tableId, { name = '', phone = '' }) => {
-    if (name || phone) {
-      localStorage.setItem(`inamdar_cust_${tableId}`, JSON.stringify({ name, phone }));
+  const setTableCustomer = useCallback(async (tableId, { name = '', phone = '' }) => {
+    const cleanName = (name || '').trim();
+    const cleanPhone = (phone || '').trim();
+    if (cleanName || cleanPhone) {
+      localStorage.setItem(`inamdar_cust_${tableId}`, JSON.stringify({ name: cleanName, phone: cleanPhone }));
     } else {
       localStorage.removeItem(`inamdar_cust_${tableId}`);
     }
+
+    // Persist customer details directly to tables table in Supabase
+    try {
+      await supabase
+        .from('tables')
+        .update({ customer_name: cleanName, customer_phone: cleanPhone })
+        .eq('id', tableId);
+    } catch (err) {
+      console.error('Error saving customer info to Supabase tables:', err);
+    }
+
+    setTables(prev =>
+      prev.map(t => (t.id === tableId ? { ...t, customer_name: cleanName, customer_phone: cleanPhone } : t))
+    );
   }, []);
 
   // Theme State: 'dark' (night) or 'light' (day)
@@ -169,7 +188,7 @@ export function CaptainProvider({ children }) {
     try {
       setIsLoading(true);
 
-      // 1. Tables (Dine-in only: AC & FAMILY AC; Parcel and Home Delivery excluded)
+      // 1. Tables (Dine-in only: GENERAL & FAMILY AC; Parcel and Home Delivery excluded)
       // Once a bill is gone in unsettled/billed, show table as vacant (AVAILABLE)
       const { data: tData } = await supabase.from('tables').select('*').order('id');
       if (tData) {
@@ -180,8 +199,14 @@ export function CaptainProvider({ children }) {
           })
           .map(t => {
             if (t.status === 'BILLED' || t.status === 'UNSETTLED') {
-              supabase.from('tables').update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null }).eq('id', t.id).then();
-              return { ...t, status: 'AVAILABLE', kot_nos: [], active_waiter: null };
+              supabase.from('tables').update({
+                status: 'AVAILABLE',
+                kot_nos: [],
+                active_waiter: null,
+                customer_name: '',
+                customer_phone: ''
+              }).eq('id', t.id).then();
+              return { ...t, status: 'AVAILABLE', kot_nos: [], active_waiter: null, customer_name: '', customer_phone: '' };
             }
             return t;
           });
@@ -201,10 +226,24 @@ export function CaptainProvider({ children }) {
       if (cData?.counter_val) setDailyKotCounter(cData.counter_val);
 
       // 5. Active KOTs & Order Items
-      const { data: kData } = await supabase.from('kots').select('*').in('status', ['PENDING', 'PREPARING', 'READY']).order('created_at', { ascending: false });
+      const { data: kData } = await supabase
+        .from('kots')
+        .select('*')
+        .in('status', ['PENDING', 'PREPARING', 'READY'])
+        .order('created_at', { ascending: false });
       if (kData) setKots(kData);
 
-      const { data: oData } = await supabase.from('order_items').select('*').in('status', ['PENDING', 'PREPARING', 'READY']).order('created_at', { ascending: false });
+      // Order items for active tables (including SERVED items so running table total reflects all ordered dishes)
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const { data: oData } = await supabase
+        .from('order_items')
+        .select('*')
+        .in('status', ['PENDING', 'PREPARING', 'READY', 'SERVED'])
+        .gte('created_at', todayStart.toISOString())
+        .order('created_at', { ascending: false });
+
       if (oData) {
         setOrderItems(oData);
         // Pre-populate readyAlerts for dishes already marked READY by kitchen
@@ -243,6 +282,8 @@ export function CaptainProvider({ children }) {
               tbl.status = 'AVAILABLE';
               tbl.kot_nos = [];
               tbl.active_waiter = null;
+              tbl.customer_name = '';
+              tbl.customer_phone = '';
             }
             setTables(prev => [...prev.filter(t => t.id !== tbl.id), tbl]);
           }
@@ -254,14 +295,26 @@ export function CaptainProvider({ children }) {
               tbl.status = 'AVAILABLE';
               tbl.kot_nos = [];
               tbl.active_waiter = null;
-              supabase.from('tables').update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null }).eq('id', tbl.id).then();
+              tbl.customer_name = '';
+              tbl.customer_phone = '';
+              supabase.from('tables').update({
+                status: 'AVAILABLE',
+                kot_nos: [],
+                active_waiter: null,
+                customer_name: '',
+                customer_phone: ''
+              }).eq('id', tbl.id).then();
             }
             setTables(prev => prev.map(t => (t.id === tbl.id ? tbl : t)));
           } else {
-            setTables(prev => prev.filter(t => t.id !== payload.new.id));
+            const delId = payload.new?.id || payload.old?.id;
+            setTables(prev => prev.filter(t => t.id !== delId));
           }
         } else if (payload.eventType === 'DELETE') {
-          setTables(prev => prev.filter(t => t.id !== payload.old.id));
+          const delId = payload.old?.id || payload.new?.id;
+          if (delId) {
+            setTables(prev => prev.filter(t => t.id !== delId));
+          }
         }
       })
       .subscribe();
@@ -270,19 +323,34 @@ export function CaptainProvider({ children }) {
     const billsChannel = supabase
       .channel('captain_bills_live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bills' }, payload => {
-        const tableId = payload.new?.table_id;
+        const tableId = payload.new?.table_id || payload.old?.table_id;
         if (tableId) {
           localStorage.removeItem(`inamdar_cust_${tableId}`);
           supabase
             .from('tables')
-            .update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null })
+            .update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null, customer_name: '', customer_phone: '' })
             .eq('id', tableId)
             .then();
 
           setTables(prev =>
-            prev.map(t => (t.id === tableId ? { ...t, status: 'AVAILABLE', kot_nos: [], active_waiter: null } : t))
+            prev.map(t => (t.id === tableId ? { ...t, status: 'AVAILABLE', kot_nos: [], active_waiter: null, customer_name: '', customer_phone: '' } : t))
           );
         }
+      })
+      .subscribe();
+
+    // KOTs channel: Live sync of Kitchen Order Tickets
+    const kotsChannel = supabase
+      .channel('captain_kots_live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kots' }, payload => {
+        setKots(prev => [payload.new, ...prev.filter(k => k.id !== payload.new.id)]);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kots' }, payload => {
+        setKots(prev => prev.map(k => (k.id === payload.new.id ? payload.new : k)));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'kots' }, payload => {
+        const delId = payload.old?.id;
+        if (delId) setKots(prev => prev.filter(k => k.id !== delId));
       })
       .subscribe();
 
@@ -317,10 +385,18 @@ export function CaptainProvider({ children }) {
           setReadyAlerts(prev => prev.filter(a => a.itemId !== updated.id));
         }
       })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'order_items' }, payload => {
+        const delId = payload.old?.id;
+        if (delId) {
+          setOrderItems(prev => prev.filter(i => i.id !== delId));
+          setReadyAlerts(prev => prev.filter(a => a.itemId !== delId));
+        }
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(tablesChannel);
+      supabase.removeChannel(kotsChannel);
       supabase.removeChannel(itemsChannel);
       supabase.removeChannel(billsChannel);
     };
@@ -330,11 +406,14 @@ export function CaptainProvider({ children }) {
   const fireKot = useCallback(async ({ tableId, cartItems, section, customerName = '', customerPhone = '' }) => {
     soundEngine.playTap();
     const currentTable = tables.find(t => t.id === tableId);
-    const targetSection = section || currentTable?.section || 'AC';
+    const targetSection = section || currentTable?.section || 'GENERAL';
+
+    const cleanCustName = (customerName || '').trim();
+    const cleanCustPhone = (customerPhone || '').trim();
 
     // Store customer details locally for this table
-    if (customerName || customerPhone) {
-      localStorage.setItem(`inamdar_cust_${tableId}`, JSON.stringify({ name: customerName, phone: customerPhone }));
+    if (cleanCustName || cleanCustPhone) {
+      localStorage.setItem(`inamdar_cust_${tableId}`, JSON.stringify({ name: cleanCustName, phone: cleanCustPhone }));
     }
 
     // 1. Fetch & Increment Counter
@@ -354,10 +433,10 @@ export function CaptainProvider({ children }) {
     setDailyKotCounter(nextKotNum + 1);
 
     // Formatted waiter & customer display for KOT tickets & Kitchen
-    const custInfo = customerName ? ` • ${customerName}${customerPhone ? ` (${customerPhone})` : ''}` : '';
+    const custInfo = cleanCustName ? ` • ${cleanCustName}${cleanCustPhone ? ` (${cleanCustPhone})` : ''}` : '';
     const waiterDisplay = `${currentWaiter.name}${custInfo}`;
 
-    // 2. Insert KOT Header
+    // 2. Insert KOT Header with dedicated customer_name and customer_phone columns
     const { data: newKot, error: kotErr } = await supabase
       .from('kots')
       .insert([
@@ -366,6 +445,8 @@ export function CaptainProvider({ children }) {
           table_id: tableId,
           section: targetSection,
           waiter_name: waiterDisplay,
+          customer_name: cleanCustName,
+          customer_phone: cleanCustPhone,
           department: 'ALL',
           source: 'CAPTAIN_APP',
           status: 'PENDING',
@@ -378,26 +459,29 @@ export function CaptainProvider({ children }) {
 
     // 3. Insert Line items (Split: Cook vs Pantry)
     const isAc = targetSection.toUpperCase().includes('AC');
-    const itemsToInsert = cartItems.map(item => ({
-      kot_id: newKot.id,
-      kot_number: nextKotNum,
-      table_id: tableId,
-      item_code: item.code,
-      item_name: item.name,
-      qty: item.qty,
-      rate: isAc ? item.ac_rate : item.hall_rate,
-      amount: item.qty * (isAc ? item.ac_rate : item.hall_rate),
-      category: item.category,
-      category_order: item.category_order,
-      customization: item.customization || '',
-      department: item.is_kitchen ? 'KITCHEN' : 'PANTRY',
-      is_staged: false,
-      status: 'PENDING',
-    }));
+    const itemsToInsert = cartItems.map(item => {
+      const itemRate = isAc ? (item.ac_rate || item.hall_rate) : (item.hall_rate || item.ac_rate);
+      return {
+        kot_id: newKot.id,
+        kot_number: nextKotNum,
+        table_id: tableId,
+        item_code: item.code,
+        item_name: item.name,
+        qty: item.qty,
+        rate: itemRate,
+        amount: item.qty * itemRate,
+        category: item.category,
+        category_order: item.category_order,
+        customization: item.customization || '',
+        department: item.is_kitchen ? 'KITCHEN' : 'PANTRY',
+        is_staged: false,
+        status: 'PENDING',
+      };
+    });
 
     await supabase.from('order_items').insert(itemsToInsert);
 
-    // 4. Update Table state
+    // 4. Update Table state with customer details
     const currentKotNos = currentTable?.kot_nos || [];
     const updatedKotNos = [...currentKotNos, nextKotNum];
 
@@ -406,10 +490,27 @@ export function CaptainProvider({ children }) {
       .update({
         status: 'OCCUPIED',
         active_waiter: waiterDisplay,
+        customer_name: cleanCustName,
+        customer_phone: cleanCustPhone,
         kot_nos: updatedKotNos,
         updated_at: new Date().toISOString(),
       })
       .eq('id', tableId);
+
+    setTables(prev =>
+      prev.map(t =>
+        t.id === tableId
+          ? {
+              ...t,
+              status: 'OCCUPIED',
+              active_waiter: waiterDisplay,
+              customer_name: cleanCustName,
+              customer_phone: cleanCustPhone,
+              kot_nos: updatedKotNos,
+            }
+          : t
+      )
+    );
 
     return { success: true, kotNumber: nextKotNum };
   }, [tables, dailyKotCounter, currentWaiter]);
@@ -426,6 +527,8 @@ export function CaptainProvider({ children }) {
     if (status === 'AVAILABLE') {
       payload.kot_nos = [];
       payload.active_waiter = null;
+      payload.customer_name = '';
+      payload.customer_phone = '';
       localStorage.removeItem(`inamdar_cust_${tableId}`);
     }
     await supabase.from('tables').update(payload).eq('id', tableId);

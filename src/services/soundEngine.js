@@ -77,7 +77,7 @@ class SoundEngine {
 
       osc.start(now);
       osc.stop(now + 0.045);
-    } catch (e) {
+    } catch {
       // Ignore
     }
   }

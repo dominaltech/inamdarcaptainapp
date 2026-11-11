@@ -9,12 +9,6 @@ import { X } from 'lucide-react';
 
 function CaptainAppMain() {
   const {
-    currentWaiter,
-    readyAlerts,
-    dismissReadyAlert,
-    clearAllAlerts,
-    isPwaInstalled,
-    installPwa,
     showIosInstallGuide,
     setShowIosInstallGuide
   } = useCaptain();

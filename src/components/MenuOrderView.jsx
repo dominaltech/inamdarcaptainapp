@@ -10,12 +10,9 @@ import {
   Flame,
   Clock,
   X,
-  ChevronRight,
-  ShoppingBag,
   Trash2,
   Camera,
   User,
-  Phone,
   Edit3
 } from 'lucide-react';
 
@@ -24,8 +21,6 @@ export default function MenuOrderView({ table, onBack }) {
     menuItems,
     fireKot,
     orderItems,
-    updateTablePax,
-    setTableStatus,
     dishImages,
     uploadDishImage,
     removeDishImage,
@@ -44,8 +39,8 @@ export default function MenuOrderView({ table, onBack }) {
 
   // Customer Name and Phone Number state
   const existingCust = getTableCustomer(table.id);
-  const [customerName, setCustomerName] = useState(table.customerName || existingCust.name || '');
-  const [customerPhone, setCustomerPhone] = useState(table.customerPhone || existingCust.phone || '');
+  const [customerName, setCustomerName] = useState(table.customer_name || table.customerName || existingCust.name || '');
+  const [customerPhone, setCustomerPhone] = useState(table.customer_phone || table.customerPhone || existingCust.phone || '');
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
 
   // Dish Image Upload State
@@ -151,7 +146,7 @@ export default function MenuOrderView({ table, onBack }) {
 
   const cartTotalQty = cart.reduce((sum, item) => sum + item.qty, 0);
   const cartTotalAmount = cart.reduce((sum, item) => {
-    const rate = isAcSection ? item.ac_rate : item.hall_rate;
+    const rate = isAcSection ? (item.ac_rate || item.hall_rate) : (item.hall_rate || item.ac_rate);
     return sum + item.qty * rate;
   }, 0);
 
@@ -184,7 +179,7 @@ export default function MenuOrderView({ table, onBack }) {
     try {
       await fireKot({
         tableId: table.id,
-        section: table.section,
+        section: table.section || 'GENERAL',
         cartItems: cart,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim()
@@ -237,8 +232,16 @@ export default function MenuOrderView({ table, onBack }) {
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <span style={{ fontSize: '14px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>T-{table.id}</span>
-              <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '4px', background: isAcSection ? 'rgba(59, 130, 246, 0.2)' : 'rgba(168, 85, 247, 0.2)', color: isAcSection ? '#60a5fa' : '#c084fc', fontWeight: '800', whiteSpace: 'nowrap' }}>
-                {isAcSection ? 'AC' : 'Hall'}
+              <span style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: (table.section || '').toUpperCase().includes('FAMILY AC') ? 'rgba(168, 85, 247, 0.2)' : 'rgba(2, 132, 199, 0.2)',
+                color: (table.section || '').toUpperCase().includes('FAMILY AC') ? '#c084fc' : '#38bdf8',
+                fontWeight: '800',
+                whiteSpace: 'nowrap'
+              }}>
+                {table.section || (isAcSection ? 'FAMILY AC' : 'GENERAL')}
               </span>
             </div>
 
@@ -414,7 +417,7 @@ export default function MenuOrderView({ table, onBack }) {
             gap: '8px'
           }}>
             {filteredMenu.map(dish => {
-              const activePrice = isAcSection ? dish.ac_rate : dish.hall_rate;
+              const activePrice = isAcSection ? (dish.ac_rate || dish.hall_rate) : (dish.hall_rate || dish.ac_rate);
               const cartItem = cart.find(i => i.code === dish.code);
               const dishImg = dishImages[dish.code];
 
@@ -594,7 +597,7 @@ export default function MenuOrderView({ table, onBack }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    borderLeft: item.status === 'READY' ? '4px solid #10b981' : item.status === 'PREPARING' ? '4px solid #3b82f6' : '4px solid #f59e0b',
+                    borderLeft: item.status === 'SERVED' ? '4px solid #059669' : item.status === 'READY' ? '4px solid #10b981' : item.status === 'PREPARING' ? '4px solid #3b82f6' : '4px solid #f59e0b',
                     background: 'var(--bg-card)'
                   }}
                 >
@@ -617,7 +620,7 @@ export default function MenuOrderView({ table, onBack }) {
                     borderRadius: '6px',
                     fontSize: '10px',
                     fontWeight: '800',
-                    background: item.status === 'READY' ? '#10b981' : item.status === 'PREPARING' ? '#3b82f6' : '#f59e0b',
+                    background: item.status === 'SERVED' ? '#059669' : item.status === 'READY' ? '#10b981' : item.status === 'PREPARING' ? '#3b82f6' : '#f59e0b',
                     color: '#fff'
                   }}>
                     {item.status}
@@ -753,7 +756,7 @@ export default function MenuOrderView({ table, onBack }) {
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {cart.map(item => {
-                const rate = isAcSection ? item.ac_rate : item.hall_rate;
+                const rate = isAcSection ? (item.ac_rate || item.hall_rate) : (item.hall_rate || item.ac_rate);
                 return (
                   <div
                     key={item.code}
