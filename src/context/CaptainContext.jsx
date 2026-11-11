@@ -368,6 +368,25 @@ export function CaptainProvider({ children }) {
           setReadyAlerts(prev => prev.filter(a => a.itemId !== delId));
         }
       })
+      // 5. Menu items listener for live menu and category reordering updates
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, async () => {
+        const { data: updatedMenu } = await supabase
+          .from('menu_items')
+          .select('*')
+          .eq('is_available', true)
+          .order('category_order')
+          .order('code');
+        if (updatedMenu) setMenuItems(updatedMenu);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_categories' }, async () => {
+        const { data: updatedMenu } = await supabase
+          .from('menu_items')
+          .select('*')
+          .eq('is_available', true)
+          .order('category_order')
+          .order('code');
+        if (updatedMenu) setMenuItems(updatedMenu);
+      })
       .subscribe();
 
     return () => {
