@@ -270,9 +270,10 @@ export function CaptainProvider({ children }) {
   useEffect(() => {
     loadData();
 
-    // Table channel (Dine-in tables only; Billed/Unsettled tables show as Vacant)
-    const tablesChannel = supabase
-      .channel('captain_tables_live')
+    // Consolidated single Real-time Hub for minimal egress & zero redundant writes
+    const liveHub = supabase
+      .channel('captain_live_hub')
+      // 1. Tables listener
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
         if (payload.eventType === 'INSERT') {
           const sec = (payload.new.section || '').toUpperCase();
@@ -297,13 +298,6 @@ export function CaptainProvider({ children }) {
               tbl.active_waiter = null;
               tbl.customer_name = '';
               tbl.customer_phone = '';
-              supabase.from('tables').update({
-                status: 'AVAILABLE',
-                kot_nos: [],
-                active_waiter: null,
-                customer_name: '',
-                customer_phone: ''
-              }).eq('id', tbl.id).then();
             }
             setTables(prev => prev.map(t => (t.id === tbl.id ? tbl : t)));
           } else {
@@ -317,31 +311,17 @@ export function CaptainProvider({ children }) {
           }
         }
       })
-      .subscribe();
-
-    // Bills channel: When bill is generated (sent to unsettled/settled), immediately show table as vacant!
-    const billsChannel = supabase
-      .channel('captain_bills_live')
+      // 2. Bills listener: Instantly vacate table locally without triggering duplicate database updates
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bills' }, payload => {
         const tableId = payload.new?.table_id || payload.old?.table_id;
         if (tableId) {
           localStorage.removeItem(`inamdar_cust_${tableId}`);
-          supabase
-            .from('tables')
-            .update({ status: 'AVAILABLE', kot_nos: [], active_waiter: null, customer_name: '', customer_phone: '' })
-            .eq('id', tableId)
-            .then();
-
           setTables(prev =>
             prev.map(t => (t.id === tableId ? { ...t, status: 'AVAILABLE', kot_nos: [], active_waiter: null, customer_name: '', customer_phone: '' } : t))
           );
         }
       })
-      .subscribe();
-
-    // KOTs channel: Live sync of Kitchen Order Tickets
-    const kotsChannel = supabase
-      .channel('captain_kots_live')
+      // 3. KOTs listener
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kots' }, payload => {
         setKots(prev => [payload.new, ...prev.filter(k => k.id !== payload.new.id)]);
       })
@@ -352,11 +332,7 @@ export function CaptainProvider({ children }) {
         const delId = payload.old?.id;
         if (delId) setKots(prev => prev.filter(k => k.id !== delId));
       })
-      .subscribe();
-
-    // Order items channel for READY food alert
-    const itemsChannel = supabase
-      .channel('captain_items_live')
+      // 4. Order items listener for READY food alert
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'order_items' }, payload => {
         setOrderItems(prev => [payload.new, ...prev.filter(i => i.id !== payload.new.id)]);
       })
@@ -395,10 +371,7 @@ export function CaptainProvider({ children }) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(tablesChannel);
-      supabase.removeChannel(kotsChannel);
-      supabase.removeChannel(itemsChannel);
-      supabase.removeChannel(billsChannel);
+      supabase.removeChannel(liveHub);
     };
   }, [loadData]);
 
@@ -416,7 +389,58 @@ export function CaptainProvider({ children }) {
       localStorage.setItem(`inamdar_cust_${tableId}`, JSON.stringify({ name: cleanCustName, phone: cleanCustPhone }));
     }
 
-    // 1. Fetch & Increment Counter
+    // Formatted waiter & customer display for KOT tickets & Kitchen
+    const custInfo = cleanCustName ? ` • ${cleanCustName}${cleanCustPhone ? ` (${cleanCustPhone})` : ''}` : '';
+    const waiterDisplay = `${currentWaiter.name}${custInfo}`;
+
+    // Fast-path: Atomic fire_kot RPC (Single ACID network transaction)
+    const isAc = targetSection.toUpperCase().includes('AC');
+    const rpcItems = cartItems.map(item => {
+      const itemRate = isAc ? (item.ac_rate || item.hall_rate) : (item.hall_rate || item.ac_rate);
+      return {
+        item_code: item.code,
+        item_name: item.name,
+        qty: item.qty,
+        rate: itemRate,
+        amount: item.qty * itemRate,
+        category: item.category || 'GENERAL',
+        department: item.is_kitchen ? 'KITCHEN' : 'PANTRY',
+      };
+    });
+
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('fire_kot', {
+        p_table_id: String(tableId),
+        p_section: targetSection,
+        p_waiter_name: currentWaiter.name,
+        p_customer_name: cleanCustName,
+        p_customer_phone: cleanCustPhone,
+        p_items: rpcItems,
+      });
+
+      if (!rpcErr && rpcData && rpcData.success) {
+        setDailyKotCounter(rpcData.kot_number + 1);
+        setTables(prev =>
+          prev.map(t =>
+            t.id === tableId
+              ? {
+                  ...t,
+                  status: 'OCCUPIED',
+                  active_waiter: waiterDisplay,
+                  customer_name: cleanCustName,
+                  customer_phone: cleanCustPhone,
+                  kot_nos: [...(t.kot_nos || []), rpcData.kot_number],
+                }
+              : t
+          )
+        );
+        return { success: true, kotNumber: rpcData.kot_number };
+      }
+    } catch (rpcEx) {
+      console.warn('Captain fire_kot RPC fallback to multi-query:', rpcEx);
+    }
+
+    // 1. Fetch & Increment Counter (Fallback)
     const { data: counter } = await supabase
       .from('pos_counters')
       .select('counter_val')
@@ -431,10 +455,6 @@ export function CaptainProvider({ children }) {
       .eq('counter_key', 'daily_kot_counter');
 
     setDailyKotCounter(nextKotNum + 1);
-
-    // Formatted waiter & customer display for KOT tickets & Kitchen
-    const custInfo = cleanCustName ? ` • ${cleanCustName}${cleanCustPhone ? ` (${cleanCustPhone})` : ''}` : '';
-    const waiterDisplay = `${currentWaiter.name}${custInfo}`;
 
     // 2. Insert KOT Header with dedicated customer_name and customer_phone columns
     const { data: newKot, error: kotErr } = await supabase
@@ -458,7 +478,6 @@ export function CaptainProvider({ children }) {
     if (kotErr) throw kotErr;
 
     // 3. Insert Line items (Split: Cook vs Pantry)
-    const isAc = targetSection.toUpperCase().includes('AC');
     const itemsToInsert = cartItems.map(item => {
       const itemRate = isAc ? (item.ac_rate || item.hall_rate) : (item.hall_rate || item.ac_rate);
       return {
