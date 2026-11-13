@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useCaptain } from '../context/CaptainContext';
 import { soundEngine } from '../services/soundEngine';
 import {
@@ -13,7 +13,11 @@ import {
   Trash2,
   Camera,
   User,
-  Edit3
+  Edit3,
+  Cloud,
+  CloudOff,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 export default function MenuOrderView({ table, onBack }) {
@@ -22,8 +26,11 @@ export default function MenuOrderView({ table, onBack }) {
     fireKot,
     orderItems,
     dishImages,
+    dishImageMeta,
+    uploadingDishCodes,
     uploadDishImage,
     removeDishImage,
+    syncPendingDishImages,
     getTableCustomer,
     setTableCustomer
   } = useCaptain();
@@ -43,10 +50,22 @@ export default function MenuOrderView({ table, onBack }) {
   const [customerPhone, setCustomerPhone] = useState(table.customer_phone || table.customerPhone || existingCust.phone || '');
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
 
-  // Dish Image Upload State
+  // Dish Image Upload & Sync State
   const fileInputRef = useRef(null);
   const [uploadTargetCode, setUploadTargetCode] = useState(null);
   const [previewDish, setPreviewDish] = useState(null);
+  const [syncNotice, setSyncNotice] = useState(null);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+
+  useEffect(() => {
+    if (!syncNotice) return undefined;
+    const timer = setTimeout(() => setSyncNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [syncNotice]);
+
+  const pendingSyncCount = useMemo(() => {
+    return Object.keys(dishImages).filter(code => dishImageMeta?.[code]?.synced === false).length;
+  }, [dishImages, dishImageMeta]);
 
   const isAcSection = (table.section || '').toUpperCase().includes('AC');
 
@@ -167,8 +186,33 @@ export default function MenuOrderView({ table, onBack }) {
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (file && uploadTargetCode) {
-      await uploadDishImage(uploadTargetCode, file);
+      const targetCode = uploadTargetCode;
       setPreviewDish(null);
+      const res = await uploadDishImage(targetCode, file);
+      if (res?.synced) {
+        setSyncNotice({ type: 'success', text: `Photo #${targetCode} saved to Supabase & cached locally.` });
+      } else if (res?.localSaved) {
+        setSyncNotice({ type: 'warning', text: `Saved locally (${res?.error || 'Supabase sync pending'}).` });
+      } else {
+        setSyncNotice({ type: 'error', text: res?.error || 'Failed to upload dish photo.' });
+      }
+    }
+  };
+
+  const handleSyncAllPending = async () => {
+    if (isSyncingAll) return;
+    setIsSyncingAll(true);
+    try {
+      const res = await syncPendingDishImages();
+      if (res.syncedCount > 0 && res.failedCount === 0) {
+        setSyncNotice({ type: 'success', text: `Synced ${res.syncedCount} photo(s) to Supabase.` });
+      } else if (res.failedCount > 0) {
+        setSyncNotice({ type: 'warning', text: res.lastError || `Synced ${res.syncedCount}, failed ${res.failedCount}.` });
+      } else {
+        setSyncNotice({ type: 'success', text: 'All dish photos are synced.' });
+      }
+    } finally {
+      setIsSyncingAll(false);
     }
   };
 
@@ -404,6 +448,85 @@ export default function MenuOrderView({ table, onBack }) {
                 </button>
               ))}
             </div>
+
+            {pendingSyncCount > 0 && (
+              <div style={{
+                marginTop: '8px',
+                padding: '6px 10px',
+                borderRadius: '8px',
+                background: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: '700', color: '#f59e0b' }}>
+                  <CloudOff size={13} />
+                  <span>{pendingSyncCount} local photo{pendingSyncCount > 1 ? 's' : ''} pending upload</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSyncAllPending}
+                  disabled={isSyncingAll}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: '#f59e0b',
+                    color: '#000',
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0
+                  }}
+                >
+                  <RefreshCw size={11} className={isSyncingAll ? 'spin' : ''} />
+                  <span>{isSyncingAll ? 'Syncing...' : 'Sync Now'}</span>
+                </button>
+              </div>
+            )}
+
+            {syncNotice && (
+              <div style={{
+                marginTop: '8px',
+                padding: '6px 10px',
+                borderRadius: '8px',
+                background: syncNotice.type === 'success'
+                  ? 'rgba(16, 185, 129, 0.14)'
+                  : syncNotice.type === 'warning'
+                    ? 'rgba(245, 158, 11, 0.14)'
+                    : 'rgba(239, 68, 68, 0.14)',
+                border: `1px solid ${syncNotice.type === 'success'
+                  ? 'rgba(16, 185, 129, 0.35)'
+                  : syncNotice.type === 'warning'
+                    ? 'rgba(245, 158, 11, 0.35)'
+                    : 'rgba(239, 68, 68, 0.35)'}`,
+                color: syncNotice.type === 'success'
+                  ? '#10b981'
+                  : syncNotice.type === 'warning'
+                    ? '#f59e0b'
+                    : '#ef4444',
+                fontSize: '11px',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px'
+              }}>
+                <span>{syncNotice.text}</span>
+                <button
+                  type="button"
+                  onClick={() => setSyncNotice(null)}
+                  style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Dish List for Mobile Scroll */}
@@ -419,7 +542,10 @@ export default function MenuOrderView({ table, onBack }) {
             {filteredMenu.map(dish => {
               const activePrice = isAcSection ? (dish.ac_rate || dish.hall_rate) : (dish.hall_rate || dish.ac_rate);
               const cartItem = cart.find(i => i.code === dish.code);
-              const dishImg = dishImages[dish.code];
+              const dishKey = String(dish.code);
+              const dishImg = dishImages[dishKey];
+              const isDishUploading = Boolean(uploadingDishCodes[dishKey]);
+              const isDishSynced = Boolean(dishImageMeta?.[dishKey]?.synced);
 
               return (
                 <div
@@ -436,7 +562,7 @@ export default function MenuOrderView({ table, onBack }) {
                     background: cartItem ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-card)'
                   }}
                 >
-                  {/* Left: Food Item Image Thumbnail or Upload Button (Stored Locally in IDB) */}
+                  {/* Left: Food Item Image Thumbnail or Upload Button (Synced via Supabase + Cached in Local IDB) */}
                   {dishImg ? (
                     <div
                       onClick={() => setPreviewDish(dish)}
@@ -458,6 +584,33 @@ export default function MenuOrderView({ table, onBack }) {
                         alt={dish.name}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
+                      {isDishUploading && (
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background: 'rgba(0, 0, 0, 0.55)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <Loader2 size={18} color="#fff" className="spin" />
+                        </div>
+                      )}
+                      {!isDishUploading && !isDishSynced && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '3px',
+                            right: '3px',
+                            width: '9px',
+                            height: '9px',
+                            borderRadius: '50%',
+                            background: '#f59e0b',
+                            border: '1.5px solid #000'
+                          }}
+                          title="Local only - pending Supabase sync"
+                        />
+                      )}
                       <div style={{
                         position: 'absolute',
                         bottom: 0,
@@ -476,6 +629,7 @@ export default function MenuOrderView({ table, onBack }) {
                     <button
                       type="button"
                       onClick={() => handleTriggerUpload(dish.code)}
+                      disabled={isDishUploading}
                       style={{
                         width: '52px',
                         height: '52px',
@@ -492,10 +646,10 @@ export default function MenuOrderView({ table, onBack }) {
                         flexShrink: 0,
                         padding: 0
                       }}
-                      title="Upload photo for this dish (stored locally)"
+                      title="Upload photo for this dish (syncs via Supabase & caches locally)"
                     >
-                      <Camera size={15} />
-                      <span style={{ fontSize: '8.5px', fontWeight: '800' }}>+ Photo</span>
+                      {isDishUploading ? <Loader2 size={15} className="spin" /> : <Camera size={15} />}
+                      <span style={{ fontSize: '8.5px', fontWeight: '800' }}>{isDishUploading ? 'Sync...' : '+ Photo'}</span>
                     </button>
                   )}
 
@@ -1012,8 +1166,19 @@ export default function MenuOrderView({ table, onBack }) {
                 <h4 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>
                   {previewDish.name}
                 </h4>
-                <p style={{ fontSize: '10.5px', color: 'var(--text-dim)', margin: '2px 0 0 0' }}>
-                  #{previewDish.code} • Stored Locally on Device
+                <p style={{ fontSize: '10.5px', color: 'var(--text-dim)', margin: '2px 0 0 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>#{previewDish.code} •</span>
+                  {uploadingDishCodes[String(previewDish.code)] ? (
+                    <span style={{ color: '#3b82f6', fontWeight: '700' }}>Uploading to Supabase...</span>
+                  ) : dishImageMeta?.[String(previewDish.code)]?.synced ? (
+                    <span style={{ color: '#10b981', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <Cloud size={11} /> Synced (Cached Locally)
+                    </span>
+                  ) : (
+                    <span style={{ color: '#f59e0b', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <CloudOff size={11} /> Local Only (Pending Sync)
+                    </span>
+                  )}
                 </p>
               </div>
               <button
@@ -1036,7 +1201,7 @@ export default function MenuOrderView({ table, onBack }) {
               justifyContent: 'center'
             }}>
               <img
-                src={dishImages[previewDish.code]}
+                src={dishImages[String(previewDish.code)]}
                 alt={previewDish.name}
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
@@ -1054,8 +1219,14 @@ export default function MenuOrderView({ table, onBack }) {
 
               <button
                 onClick={async () => {
-                  await removeDishImage(previewDish.code);
+                  const targetCode = previewDish.code;
+                  const res = await removeDishImage(targetCode);
                   setPreviewDish(null);
+                  if (res && res.ok === false) {
+                    setSyncNotice({ type: 'warning', text: `Photo #${targetCode} removed locally (${res.error || 'Supabase delete failed'}).` });
+                  } else {
+                    setSyncNotice({ type: 'success', text: `Photo #${targetCode} removed from Supabase & all devices.` });
+                  }
                 }}
                 className="btn btn-ghost"
                 style={{ height: '38px', padding: '0 12px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}

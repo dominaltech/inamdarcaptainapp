@@ -1,7 +1,17 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { soundEngine } from '../services/soundEngine';
-import { getAllDishImages, saveDishImage, deleteDishImage, compressImage } from '../services/dishImageStore';
+import {
+  getAllDishImages,
+  getAllDishImageRecords,
+  saveDishImage,
+  deleteDishImage,
+  compressImage,
+  isSameRemoteVersion,
+  uploadDishImageToSupabase,
+  deleteDishImageFromSupabase,
+  syncDishImagesFromSupabase,
+} from '../services/dishImageStore';
 
 const CaptainContext = createContext(null);
 
@@ -16,6 +26,13 @@ export function CaptainProvider({ children }) {
   const [readyAlerts, setReadyAlerts] = useState([]);
   const [isMuted, setIsMuted] = useState(false);
   const [dishImages, setDishImages] = useState({});
+  const [dishImageMeta, setDishImageMeta] = useState({});
+  const [uploadingDishCodes, setUploadingDishCodes] = useState({});
+  const dishImageMetaRef = useRef({});
+
+  useEffect(() => {
+    dishImageMetaRef.current = dishImageMeta;
+  }, [dishImageMeta]);
 
   // PWA Install State & Handlers
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -67,39 +84,139 @@ export function CaptainProvider({ children }) {
     }
   }, [deferredPrompt]);
 
-  // Load local dish images from IndexedDB
-  useEffect(() => {
-    getAllDishImages().then(imgs => {
-      if (imgs) setDishImages(imgs);
-    });
-  }, []);
-
-  const uploadDishImage = useCallback(async (dishCode, file) => {
+  const refreshDishImages = useCallback(async () => {
     try {
-      soundEngine.playTap();
-      const dataUrl = await compressImage(file);
-      await saveDishImage(dishCode, dataUrl);
-      setDishImages(prev => ({ ...prev, [String(dishCode)]: dataUrl }));
-      return true;
+      const result = await syncDishImagesFromSupabase({
+        onBatchDownloaded: (batchImages, batchMeta) => {
+          setDishImages(prev => ({ ...prev, ...batchImages }));
+          setDishImageMeta(prev => ({ ...prev, ...batchMeta }));
+        },
+      });
+      if (result?.ok) {
+        setDishImages(result.images);
+        setDishImageMeta(result.meta);
+      }
+      return result;
     } catch (err) {
-      console.error('Failed to upload image:', err);
-      return false;
+      console.error('Failed to sync dish images from Supabase:', err);
+      return { ok: false, error: err?.message || 'Supabase image sync failed' };
     }
   }, []);
 
-  const removeDishImage = useCallback(async (dishCode) => {
+  // Load cached dish images immediately from local IndexedDB (Supabase sync runs via loadData)
+  useEffect(() => {
+    getAllDishImages().then(imgs => {
+      if (imgs && Object.keys(imgs).length > 0) setDishImages(imgs);
+    });
+    getAllDishImageRecords().then(records => {
+      const initialMeta = {};
+      Object.entries(records || {}).forEach(([code, rec]) => {
+        initialMeta[code] = {
+          synced: Boolean(rec.synced),
+          remoteUpdatedAt: rec.remoteUpdatedAt || '',
+        };
+      });
+      setDishImageMeta(initialMeta);
+    });
+  }, []);
+
+  const syncDataUrlToSupabase = useCallback(async (dishCode, dataUrl) => {
+    const key = String(dishCode);
+    setUploadingDishCodes(prev => ({ ...prev, [key]: true }));
     try {
-      soundEngine.playTap();
-      await deleteDishImage(dishCode);
-      setDishImages(prev => {
+      const res = await uploadDishImageToSupabase(key, dataUrl);
+      if (res.ok) {
+        setDishImageMeta(prev => ({
+          ...prev,
+          [key]: { synced: true, remoteUpdatedAt: res.remoteUpdatedAt },
+        }));
+        return { ok: true, synced: true };
+      }
+      return {
+        ok: false,
+        synced: false,
+        localSaved: true,
+        error: res.error || 'Failed to upload image to Supabase',
+      };
+    } finally {
+      setUploadingDishCodes(prev => {
         const next = { ...prev };
-        delete next[String(dishCode)];
+        delete next[key];
         return next;
       });
-      return true;
+    }
+  }, []);
+
+  const uploadDishImage = useCallback(async (dishCode, file) => {
+    const key = String(dishCode);
+    try {
+      soundEngine.playTap();
+      const dataUrl = await compressImage(file);
+      await saveDishImage(key, { dataUrl, remoteUpdatedAt: '', synced: false });
+      setDishImages(prev => ({ ...prev, [key]: dataUrl }));
+      setDishImageMeta(prev => ({ ...prev, [key]: { synced: false, remoteUpdatedAt: '' } }));
+
+      return await syncDataUrlToSupabase(key, dataUrl);
+    } catch (err) {
+      console.error('Failed to upload image:', err);
+      return {
+        ok: false,
+        synced: false,
+        localSaved: false,
+        error: err?.message || 'Failed to process image',
+      };
+    }
+  }, [syncDataUrlToSupabase]);
+
+  const syncPendingDishImages = useCallback(async () => {
+    const records = await getAllDishImageRecords();
+    const pending = Object.values(records).filter(rec => !rec.synced && rec.dataUrl);
+    if (pending.length === 0) return { syncedCount: 0, failedCount: 0 };
+
+    let syncedCount = 0;
+    let failedCount = 0;
+    let lastError = null;
+
+    for (const rec of pending) {
+      const res = await syncDataUrlToSupabase(rec.code, rec.dataUrl);
+      if (res.ok) {
+        syncedCount += 1;
+      } else {
+        failedCount += 1;
+        lastError = res.error;
+      }
+    }
+
+    return { syncedCount, failedCount, lastError };
+  }, [syncDataUrlToSupabase]);
+
+  const removeDishImage = useCallback(async (dishCode) => {
+    const key = String(dishCode);
+    setUploadingDishCodes(prev => ({ ...prev, [key]: true }));
+    try {
+      soundEngine.playTap();
+      await deleteDishImage(key);
+      setDishImages(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      setDishImageMeta(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+
+      return await deleteDishImageFromSupabase(key);
     } catch (err) {
       console.error('Failed to remove image:', err);
-      return false;
+      return { ok: false, error: err?.message || 'Failed to remove image' };
+    } finally {
+      setUploadingDishCodes(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
     }
   }, []);
 
@@ -183,8 +300,9 @@ export function CaptainProvider({ children }) {
     });
   }, []);
 
-  // Fetch all initial data from Supabase
+  // Fetch all initial data from Supabase and sync any uncached dish images
   const loadData = useCallback(async () => {
+    refreshDishImages();
     try {
       setIsLoading(true);
 
@@ -264,7 +382,7 @@ export function CaptainProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [refreshDishImages]);
 
   // Setup Real-time Subscriptions
   useEffect(() => {
@@ -386,6 +504,45 @@ export function CaptainProvider({ children }) {
           .order('category_order')
           .order('code');
         if (updatedMenu) setMenuItems(updatedMenu);
+      })
+      // 6. Dish images listener: store locally once on change across devices
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_images' }, async payload => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const row = payload.new;
+          const code = row?.code ? String(row.code) : '';
+          if (!code || !row?.image_data) return;
+
+          const existingMeta = dishImageMetaRef.current[code];
+          if (existingMeta?.synced && isSameRemoteVersion(existingMeta.remoteUpdatedAt, row.updated_at)) {
+            return;
+          }
+
+          await saveDishImage(code, {
+            dataUrl: row.image_data,
+            remoteUpdatedAt: row.updated_at || '',
+            synced: true,
+          });
+          setDishImages(prev => ({ ...prev, [code]: row.image_data }));
+          setDishImageMeta(prev => ({
+            ...prev,
+            [code]: { synced: true, remoteUpdatedAt: row.updated_at || '' },
+          }));
+        } else if (payload.eventType === 'DELETE') {
+          const delCode = payload.old?.code ? String(payload.old.code) : '';
+          if (!delCode) return;
+
+          await deleteDishImage(delCode);
+          setDishImages(prev => {
+            const next = { ...prev };
+            delete next[delCode];
+            return next;
+          });
+          setDishImageMeta(prev => {
+            const next = { ...prev };
+            delete next[delCode];
+            return next;
+          });
+        }
       })
       .subscribe();
 
@@ -654,8 +811,11 @@ export function CaptainProvider({ children }) {
     showIosInstallGuide,
     setShowIosInstallGuide,
     dishImages,
+    dishImageMeta,
+    uploadingDishCodes,
     uploadDishImage,
     removeDishImage,
+    syncPendingDishImages,
     getTableCustomer,
     setTableCustomer
   };
